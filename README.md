@@ -1,8 +1,13 @@
 # wit-flight ✈ Skydrift
 
+**Play it now → https://yothisislogan.github.io/wit-flight/**
+
 A calm, endless flight over procedural mountains, oceans and clouds — in a single
 HTML file with zero dependencies. Open `index.html` in any modern browser
 (double-click works; no server or build step needed) and take off.
+
+Deployed with GitHub Pages from the `gh-pages` branch — to ship an update,
+push the new `index.html` to that branch.
 
 ## Features
 
