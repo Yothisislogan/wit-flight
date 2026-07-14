@@ -9,6 +9,29 @@ HTML file with zero dependencies. Open `index.html` in any modern browser
 Deployed with GitHub Pages from the `gh-pages` branch — to ship an update,
 push the new `index.html` to that branch.
 
+## The fleet
+
+| Aircraft | Character |
+| --- | --- |
+| **Cub** | friendly high-wing trainer — balanced and forgiving |
+| **Albatross** | glider with a whisper-quiet sustainer motor — huge wings, gentle sink, ride the wind |
+| **Bumble** | stunt biplane — snappy rates, strong engine, born for aerobatics |
+| **Pelican** | floatplane — heavier and steadier, and it can land on (and take off from) water |
+| **Swift** | small jet — twice the speed, turbine whine instead of a propeller |
+
+Pick a plane on the title screen or from the pause menu. **Aerobatics:** with
+assists on, the stick commands a bank angle for smooth relaxed turns — but push
+the stick *fully* over (or hold an arrow key) and it breaks out into raw rate
+mode: barrel rolls, loops, the lot. Ease off and the assists catch you. Turn
+assists off for full manual control.
+
+## Weather
+
+The sky lives on its own slow cycle: clear skies build into scattered puffs,
+grey overcast, and soft rain — with drifting wind that freshens ahead of the
+weather, denser fog, rain streaks past the canopy, a rain-muffled soundtrack,
+and (if you're lucky, looking away from the sun after a shower) a rainbow.
+
 ## Features
 
 - **Endless procedural terrain** — value-noise continents, ridged-noise mountain
