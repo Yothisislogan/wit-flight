@@ -1,0 +1,1728 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#8fb7d8">
+<meta name="description" content="Skydrift — a calm, endless flight over procedural mountains and clouds. Single-file WebGL flight simulator with touch controls and 8-bit ambience.">
+<title>Skydrift ✈ a calm flight</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛩️</text></svg>">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; overflow:hidden; background:#0b1220; }
+  body {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", monospace;
+    color:#fff; touch-action:none; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none;
+  }
+  #gl { position:fixed; inset:0; width:100%; height:100%; display:block; }
+
+  /* ---- layers ---- */
+  #vignette { position:fixed; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse at 50% 42%, rgba(0,0,0,0) 58%, rgba(16,20,40,.30) 100%); }
+  #cloudflash { position:fixed; inset:0; pointer-events:none; background:#fff; opacity:0; transition:opacity .7s ease; }
+  #crashflash { position:fixed; inset:0; pointer-events:none; background:#fff; opacity:0; }
+
+  /* ---- HUD ---- */
+  .glass { background:rgba(18,28,44,.30); border:1px solid rgba(255,255,255,.14);
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    border-radius:16px; box-shadow:0 4px 18px rgba(10,15,35,.18); }
+  #hud { position:fixed; inset:0; pointer-events:none; opacity:0; transition:opacity .6s; }
+  #hud.on { opacity:1; }
+  #stats { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
+    display:flex; gap:8px; padding:7px 14px; pointer-events:none; white-space:nowrap; }
+  #stats .st { text-align:center; min-width:64px; }
+  #stats .lb { font-size:9px; letter-spacing:2px; opacity:.66; }
+  #stats .vl { font-size:15px; font-weight:700; letter-spacing:1px; text-shadow:0 1px 3px rgba(10,20,40,.5); }
+  #btns { position:absolute; top:calc(10px + env(safe-area-inset-top)); right:calc(10px + env(safe-area-inset-right));
+    display:flex; gap:8px; pointer-events:auto; }
+  .rbtn { width:40px; height:40px; border-radius:50%; border:1px solid rgba(255,255,255,.16);
+    background:rgba(18,28,44,.30); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    color:#fff; font-size:17px; line-height:38px; text-align:center; cursor:pointer; }
+  .rbtn:active { background:rgba(255,255,255,.22); }
+  .rbtn.off { opacity:.45; }
+  #pauseBtn { position:absolute; top:calc(10px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); pointer-events:auto; }
+
+  /* throttle */
+  #thr { position:absolute; right:calc(12px + env(safe-area-inset-right)); top:50%; transform:translateY(-42%);
+    width:52px; height:min(42vh,250px); min-height:150px; border-radius:26px; pointer-events:auto;
+    overflow:hidden; }
+  #thrFill { position:absolute; left:0; right:0; bottom:0; height:75%;
+    background:linear-gradient(to top, rgba(240,150,110,.75), rgba(250,210,140,.75));
+    border-top:2px solid rgba(255,255,255,.75); transition:none; }
+  #thrLab { position:absolute; top:6px; left:0; right:0; text-align:center; font-size:9px; letter-spacing:1px; opacity:.85;
+    text-shadow:0 1px 2px rgba(0,0,0,.4); }
+  #thrPct { position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:11px; font-weight:700;
+    text-shadow:0 1px 2px rgba(0,0,0,.4); }
+
+  /* virtual stick */
+  #stickRing { position:fixed; width:116px; height:116px; border-radius:50%; border:2px solid rgba(255,255,255,.34);
+    background:rgba(255,255,255,.05); pointer-events:none; display:none; transform:translate(-50%,-50%); }
+  #stickNub { position:fixed; width:48px; height:48px; border-radius:50%;
+    background:rgba(255,255,255,.55); box-shadow:0 2px 10px rgba(20,30,60,.35);
+    pointer-events:none; display:none; transform:translate(-50%,-50%); }
+  #stickHint { position:absolute; left:calc(18px + env(safe-area-inset-left)); bottom:calc(20px + env(safe-area-inset-bottom));
+    font-size:10px; letter-spacing:1.5px; opacity:.55; pointer-events:none; padding:8px 12px; }
+
+  #toast { position:fixed; left:50%; bottom:16%; transform:translateX(-50%); padding:9px 18px;
+    font-size:12px; letter-spacing:1px; opacity:0; transition:opacity .6s; pointer-events:none; white-space:nowrap; }
+  @media (max-width: 600px){
+    #stats { top:calc(60px + env(safe-area-inset-top)); padding:5px 10px; gap:4px; }
+    #stats .st { min-width:52px; }
+    #stats .vl { font-size:12.5px; }
+    #thr { height:min(34vh,210px); }
+  }
+
+  /* ---- start / pause overlay ---- */
+  #ov { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(30,40,70,.18); transition:opacity .7s ease, visibility .7s; z-index:5; }
+  #ov.hidden { opacity:0; visibility:hidden; }
+  #panel { display:flex; flex-direction:column; align-items:center; gap:14px; padding:26px 34px; margin:12px; max-width:min(92vw,460px);
+    background:rgba(20,30,52,.44); }
+  #title { font-size:clamp(26px,6vw,40px); font-weight:800; letter-spacing:.28em; text-indent:.28em;
+    color:#fff7ea; text-shadow:0 2px 0 rgba(120,80,120,.35), 0 6px 26px rgba(255,190,120,.45); }
+  #subtitle { font-size:11px; letter-spacing:.34em; text-indent:.34em; opacity:.8; margin-top:-6px; }
+  #howto { font-size:11px; line-height:1.9; opacity:.92; text-align:center; letter-spacing:.4px; }
+  #howto b { color:#ffd9a8; font-weight:700; }
+  #keysRow { font-size:10px; opacity:.62; text-align:center; line-height:1.8; letter-spacing:.4px; }
+  #chips { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  .chip { font-size:10px; letter-spacing:1px; padding:7px 12px; border-radius:20px; cursor:pointer;
+    border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.07); opacity:.55; }
+  .chip.on { opacity:1; background:rgba(255,210,150,.22); border-color:rgba(255,215,160,.65); color:#ffe9c8; }
+  #startBtn { margin-top:4px; font:inherit; font-size:15px; font-weight:800; letter-spacing:.22em; text-indent:.22em;
+    padding:15px 34px; border-radius:32px; border:1px solid rgba(255,235,200,.6); cursor:pointer;
+    color:#3a2c22; background:linear-gradient(to top, #f2a56b, #ffdf9e);
+    box-shadow:0 6px 24px rgba(250,180,110,.45), inset 0 1px 0 rgba(255,255,255,.7); }
+  #startBtn:active { transform:translateY(1px); }
+  #foot { font-size:9.5px; letter-spacing:1.5px; opacity:.55; }
+  #errbox { display:none; max-width:80vw; background:rgba(120,30,40,.8); padding:14px 18px; border-radius:12px;
+    font-size:12px; line-height:1.6; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="vignette"></div>
+<div id="cloudflash"></div>
+<div id="crashflash"></div>
+
+<div id="hud">
+  <button id="pauseBtn" class="rbtn" title="pause">⏸</button>
+  <div id="stats" class="glass">
+    <div class="st"><div class="lb">ALT</div><div class="vl" id="stAlt">0 m</div></div>
+    <div class="st"><div class="lb">SPD</div><div class="vl" id="stSpd">0</div></div>
+    <div class="st"><div class="lb">HDG</div><div class="vl" id="stHdg">N 0°</div></div>
+  </div>
+  <div id="btns">
+    <button id="sndBtn"  class="rbtn" title="sound">🔊</button>
+    <button id="musBtn"  class="rbtn" title="music">🎵</button>
+    <button id="camBtn"  class="rbtn" title="camera">🎥</button>
+    <button id="fsBtn"   class="rbtn" title="fullscreen">⛶</button>
+  </div>
+  <div id="thr" class="glass"><div id="thrFill"></div><div id="thrLab">PWR</div><div id="thrPct">75</div></div>
+  <div id="stickHint" class="glass">DRAG HERE TO STEER</div>
+</div>
+<div id="stickRing"></div>
+<div id="stickNub"></div>
+<div id="toast" class="glass"></div>
+
+<div id="ov">
+  <div id="panel" class="glass">
+    <div id="title">SKYDRIFT</div>
+    <div id="subtitle">AN ENDLESS, GENTLE FLIGHT</div>
+    <div id="howto">
+      <b>left of screen</b> — drag to steer<br>
+      pull <b>↓ to climb</b>, push ↑ to dive, ←→ to bank<br>
+      <b>right edge</b> — throttle slider
+    </div>
+    <div id="keysRow">keys · arrows steer · W/S power · A/D rudder<br>C camera · M sound · Esc pause</div>
+    <div id="chips">
+      <div class="chip on" id="chInv">PULL TO CLIMB</div>
+      <div class="chip on" id="chAst">ASSISTS</div>
+      <div class="chip on" id="chMus">MUSIC</div>
+    </div>
+    <button id="startBtn">TAKE OFF ✈</button>
+    <div id="foot">🎧 HEADPHONES RECOMMENDED</div>
+    <div id="errbox"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+(function(){
+/* ============================================================
+   Skydrift — a calm, endless flight
+   single-file WebGL flight sim · no external dependencies
+   ============================================================ */
+
+var ERRORS = [];
+window.addEventListener('error', function(e){ ERRORS.push(String(e.message||e)); showFatal(e.message); });
+function showFatal(msg){
+  var b = document.getElementById('errbox');
+  if (b && !b.textContent){ b.style.display='block'; b.textContent = 'something went wrong: ' + msg; }
+}
+
+/* ---------------- tiny helpers ---------------- */
+function $(id){ return document.getElementById(id); }
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function smoothstep(a,b,x){ x=clamp((x-a)/(b-a),0,1); return x*x*(3-2*x); }
+function expDamp(rate,dt){ return 1-Math.exp(-rate*dt); }
+
+/* ---------------- vec / mat / quat ---------------- */
+function v3(x,y,z){ return [x||0,y||0,z||0]; }
+function vlen(a){ return Math.sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]); }
+function vnorm(a){ var l=vlen(a)||1; return [a[0]/l,a[1]/l,a[2]/l]; }
+function vcross(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function vdot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function vadd(a,b){ return [a[0]+b[0],a[1]+b[1],a[2]+b[2]]; }
+function vsub(a,b){ return [a[0]-b[0],a[1]-b[1],a[2]-b[2]]; }
+function vscale(a,s){ return [a[0]*s,a[1]*s,a[2]*s]; }
+function vlerp(a,b,t){ return [lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)]; }
+
+function m4Persp(out, fovy, aspect, near, far){
+  var f = 1/Math.tan(fovy/2), nf = 1/(near-far);
+  out.fill(0);
+  out[0]=f/aspect; out[5]=f; out[10]=(far+near)*nf; out[11]=-1; out[14]=2*far*near*nf;
+  return out;
+}
+function m4Mul(out,a,b){
+  var t = new Float32Array(16);
+  for (var c=0;c<4;c++) for (var r=0;r<4;r++){
+    var s=0; for (var k=0;k<4;k++) s += a[k*4+r]*b[c*4+k];
+    t[c*4+r]=s;
+  }
+  out.set(t); return out;
+}
+/* view matrix for a camera sitting at the origin (camera-relative world) */
+function m4ViewBasis(out, f, s, u){
+  out[0]=s[0]; out[4]=s[1]; out[8]=s[2];  out[12]=0;
+  out[1]=u[0]; out[5]=u[1]; out[9]=u[2];  out[13]=0;
+  out[2]=-f[0];out[6]=-f[1];out[10]=-f[2];out[14]=0;
+  out[3]=0;    out[7]=0;    out[11]=0;    out[15]=1;
+  return out;
+}
+function qMul(a,b){
+  return [
+    a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1],
+    a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],
+    a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],
+    a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]
+  ];
+}
+function qNorm(q){
+  var l=Math.sqrt(q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3])||1;
+  return [q[0]/l,q[1]/l,q[2]/l,q[3]/l];
+}
+function qRot(q,v){
+  var qx=q[0],qy=q[1],qz=q[2],qw=q[3];
+  var tx=2*(qy*v[2]-qz*v[1]), ty=2*(qz*v[0]-qx*v[2]), tz=2*(qx*v[1]-qy*v[0]);
+  return [ v[0]+qw*tx + qy*tz-qz*ty,
+           v[1]+qw*ty + qz*tx-qx*tz,
+           v[2]+qw*tz + qx*ty-qy*tx ];
+}
+function qAxisAngle(ax,ang){
+  var s=Math.sin(ang/2);
+  return [ax[0]*s, ax[1]*s, ax[2]*s, Math.cos(ang/2)];
+}
+function qToM3(q, out){
+  var x=q[0],y=q[1],z=q[2],w=q[3];
+  var x2=x+x,y2=y+y,z2=z+z;
+  var xx=x*x2,xy=x*y2,xz=x*z2,yy=y*y2,yz=y*z2,zz=z*z2,wx=w*x2,wy=w*y2,wz=w*z2;
+  out[0]=1-(yy+zz); out[3]=xy-wz;     out[6]=xz+wy;
+  out[1]=xy+wz;     out[4]=1-(xx+zz); out[7]=yz-wx;
+  out[2]=xz-wy;     out[5]=yz+wx;     out[8]=1-(xx+yy);
+  return out;
+}
+
+/* ---------------- seeded noise ---------------- */
+var SEED = 1123581321;
+function hash2(x,y){
+  var h = (x|0)*374761393 + (y|0)*668265263 + SEED;
+  h = (h ^ (h>>>13)) | 0;
+  h = Math.imul(h, 1274126177);
+  h = (h ^ (h>>>16)) >>> 0;
+  return h/4294967296;   // 0..1
+}
+function vnoise(x,z){
+  var ix=Math.floor(x), iz=Math.floor(z);
+  var fx=x-ix, fz=z-iz;
+  var ux=fx*fx*(3-2*fx), uz=fz*fz*(3-2*fz);
+  var a=hash2(ix,iz),   b=hash2(ix+1,iz),
+      c=hash2(ix,iz+1), d=hash2(ix+1,iz+1);
+  return (lerp(lerp(a,b,ux), lerp(c,d,ux), uz)*2-1);  // -1..1
+}
+function fbm(x,z,oct){
+  var s=0, a=0.5, f=1;
+  for (var i=0;i<oct;i++){ s += a*vnoise(x*f, z*f); f*=2.02; a*=0.5; }
+  return s;
+}
+function ridged(x,z,oct){
+  var s=0, a=0.55, f=1, w=1;
+  for (var i=0;i<oct;i++){
+    var n = 1 - Math.abs(vnoise(x*f, z*f));
+    n *= n; n *= w;
+    w = clamp(n*1.7, 0, 1);
+    s += n*a; f*=2.07; a*=0.5;
+  }
+  return s;  // ~0..1
+}
+
+/* ---------------- world design ---------------- */
+var SEA = 0.0;
+function heightAt(x,z){
+  var c = fbm(x*0.000045+31.7, z*0.000045-11.3, 3);                    // continents
+  var m = smoothstep(0.02, 0.60, fbm(x*0.00013-7.1, z*0.00013+3.9, 3)*0.5+0.5); // mountain regions
+  var h = c*150 + 46;
+  var landFade = smoothstep(-6, 42, h);
+  h += (fbm(x*0.0012, z*0.0012, 4)*22 + fbm(x*0.0037, z*0.0037, 2)*6) * (0.35+0.65*landFade);
+  var r = ridged(x*0.00042, z*0.00042, 5);
+  h += Math.pow(r, 1.65) * 640 * m * smoothstep(4, 60, h);
+  return h;
+}
+
+var C_SNOW=[244,247,250], C_ROCK1=[146,134,122], C_ROCK2=[172,158,142],
+    C_GRA1=[158,199,110], C_GRA2=[108,168,98], C_FOR=[74,138,84],
+    C_SAND=[232,214,163], C_BED=[64,124,128], C_DEEP=[38,90,104];
+function mixc(a,b,t){ return [lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],t)]; }
+function terrainColor(h, ny, x, z, rnd){
+  var slope = 1-ny, col;
+  if (h < 2.2){
+    var d = smoothstep(-60, 2.2, h);
+    col = mixc(C_DEEP, mixc(C_BED, C_SAND, smoothstep(-9, 2.2, h)), d);
+  } else if (h < 7){
+    col = mixc(C_SAND, C_GRA1, smoothstep(4.6, 7, h));
+  } else {
+    var g = fbm(x*0.006+5, z*0.006-3, 2)*0.5+0.5;
+    col = mixc(C_GRA1, C_GRA2, g);
+    var f = fbm(x*0.0021+99, z*0.0021+47, 2);
+    if (f > 0.08 && h < 270 && slope < 0.38)
+      col = mixc(col, C_FOR, smoothstep(0.08,0.3,f)*0.85);
+  }
+  var rockT = Math.max(smoothstep(0.30, 0.52, slope), smoothstep(230, 340, h));
+  if (rockT > 0) col = mixc(col, mixc(C_ROCK1, C_ROCK2, rnd), rockT);
+  var sl = 375 + rnd*34;
+  var snowT = smoothstep(sl, sl+46, h) * smoothstep(0.40, 0.60, ny);
+  if (snowT > 0) col = mixc(col, C_SNOW, snowT);
+  var j = 0.955 + rnd*0.09;
+  return [col[0]*j, col[1]*j, col[2]*j];
+}
+
+/* ---------------- WebGL core ---------------- */
+var canvas = $('gl');
+var gl = canvas.getContext('webgl', {antialias:true, alpha:false, depth:true, powerPreference:'high-performance'})
+      || canvas.getContext('experimental-webgl');
+if (!gl){ showFatal('WebGL is not available in this browser.'); return; }
+
+function makeShader(type, src){
+  var sh = gl.createShader(type);
+  gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
+    throw new Error('shader: '+gl.getShaderInfoLog(sh)+'\n'+src);
+  return sh;
+}
+function makeProg(vs, fs, attrs, unis){
+  var p = gl.createProgram();
+  gl.attachShader(p, makeShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, makeShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+    throw new Error('link: '+gl.getProgramInfoLog(p));
+  var o = {p:p, a:{}, u:{}};
+  attrs.forEach(function(n){ o.a[n] = gl.getAttribLocation(p, n); });
+  unis.forEach(function(n){ o.u[n] = gl.getUniformLocation(p, n); });
+  return o;
+}
+var FS_PRE = '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n';
+
+/* main program: terrain + aircraft (lighting & fog per vertex) */
+var progMain = makeProg(
+  'attribute vec3 aPos; attribute vec3 aNrm; attribute vec4 aCol;\n'+
+  'uniform mat4 uVP; uniform mat3 uRot; uniform vec3 uOff;\n'+
+  'uniform vec3 uSunDir, uSunCol, uAmbSky, uAmbGnd, uFogCol;\n'+
+  'uniform float uFogDen, uCamY, uHazeH;\n'+
+  'varying vec4 vCol;\n'+
+  'void main(){\n'+
+  '  vec3 p = uRot*aPos + uOff;\n'+
+  '  gl_Position = uVP * vec4(p,1.0);\n'+
+  '  vec3 n = normalize(uRot*aNrm);\n'+
+  '  float d = max(dot(n,uSunDir),0.0);\n'+
+  '  vec3 amb = mix(uAmbGnd, uAmbSky, n.y*0.5+0.5);\n'+
+  '  vec3 lit = aCol.rgb*(amb + uSunCol*d);\n'+
+  '  float dist = length(p);\n'+
+  '  float f = 1.0 - exp(-pow(dist*uFogDen, 2.0));\n'+
+  '  float wy = p.y + uCamY;\n'+
+  '  f += (1.0-f)*0.42*clamp((uHazeH-wy)/240.0, 0.0, 1.0)*clamp(dist/900.0,0.0,1.0);\n'+
+  '  vCol = vec4(mix(lit, uFogCol, clamp(f,0.0,1.0)), aCol.a);\n'+
+  '}',
+  FS_PRE+'varying vec4 vCol; void main(){ gl_FragColor = vCol; }',
+  ['aPos','aNrm','aCol'],
+  ['uVP','uRot','uOff','uSunDir','uSunCol','uAmbSky','uAmbGnd','uFogCol','uFogDen','uCamY','uHazeH']
+);
+
+/* sky */
+var progSky = makeProg(
+  'attribute vec2 aPos; attribute vec3 aRay; varying vec3 vRay;\n'+
+  'void main(){ vRay=aRay; gl_Position=vec4(aPos,0.9999,1.0); }',
+  FS_PRE+
+  'varying vec3 vRay; uniform vec3 uZen,uHor,uSunDir,uSunCol;\n'+
+  'void main(){\n'+
+  '  vec3 r = normalize(vRay);\n'+
+  '  float t = pow(clamp(r.y*1.45+0.16, 0.0, 1.0), 0.78);\n'+
+  '  vec3 col = mix(uHor, uZen, t);\n'+
+  '  float s = max(dot(r,uSunDir), 0.0);\n'+
+  '  col += uSunCol*(pow(s,1500.0)*9.0 + pow(s,48.0)*0.28 + pow(s,6.0)*0.11);\n'+
+  '  col = mix(col, uHor*0.97, clamp(-r.y*7.0, 0.0, 1.0));\n'+
+  '  col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898,78.233)))*43758.5453)-0.5)*0.012;\n'+
+  '  gl_FragColor = vec4(col, 1.0);\n'+
+  '}',
+  ['aPos','aRay'], ['uZen','uHor','uSunDir','uSunCol']
+);
+
+/* water */
+var progWater = makeProg(
+  'attribute vec2 aPos; uniform mat4 uVP; uniform vec3 uCam;\n'+
+  'varying vec3 vPos; varying vec2 vW;\n'+
+  'void main(){\n'+
+  '  vec3 p = vec3(aPos.x, -uCam.y, aPos.y);\n'+
+  '  vPos = p; vW = aPos + uCam.xz;\n'+
+  '  gl_Position = uVP*vec4(p,1.0);\n'+
+  '}',
+  FS_PRE+
+  'varying vec3 vPos; varying vec2 vW;\n'+
+  'uniform vec3 uDeep,uHor,uSunDir,uSunCol,uFogCol; uniform float uT,uFogDen;\n'+
+  'void main(){\n'+
+  '  vec2 w = vW;\n'+
+  '  vec3 n = normalize(vec3(\n'+
+  '    sin(w.x*0.11+uT*1.24)*0.03 + sin(w.x*0.041-uT*0.71)*0.045 + sin((w.x+w.y)*0.019+uT*0.4)*0.04 + sin((w.x-w.y)*0.031-uT*0.66)*0.03,\n'+
+  '    1.0,\n'+
+  '    cos(w.y*0.093+uT*1.07)*0.03 + sin(w.y*0.036+uT*0.53)*0.045 + sin((w.x*0.7+w.y)*0.023+uT*0.5)*0.035 ));\n'+
+  '  vec3 V = normalize(-vPos);\n'+
+  '  float fr = pow(1.0-max(dot(V,n),0.0), 3.0);\n'+
+  '  vec3 col = mix(uDeep, uHor, 0.22+0.62*fr);\n'+
+  '  float sp = pow(max(dot(reflect(-V,n), uSunDir), 0.0), 160.0);\n'+
+  '  col += uSunCol*sp*0.85;\n'+
+  '  float f = 1.0 - exp(-pow(length(vPos)*uFogDen, 2.0));\n'+
+  '  gl_FragColor = vec4(mix(col,uFogCol,clamp(f,0.0,1.0)), 0.93);\n'+
+  '}',
+  ['aPos'], ['uVP','uCam','uDeep','uHor','uSunDir','uSunCol','uFogCol','uT','uFogDen']
+);
+
+/* clouds & soft sprites */
+var progCloud = makeProg(
+  'attribute vec3 aCtr; attribute vec2 aCrn; attribute vec2 aUV; attribute float aFade;\n'+
+  'uniform mat4 uVP; uniform vec3 uRight,uUp; uniform float uFogDen;\n'+
+  'varying vec2 vUV; varying float vFade,vFog;\n'+
+  'void main(){\n'+
+  '  vec3 p = aCtr + uRight*aCrn.x + uUp*aCrn.y;\n'+
+  '  gl_Position = uVP*vec4(p,1.0);\n'+
+  '  vUV=aUV; vFade=aFade;\n'+
+  '  vFog = clamp(1.0-exp(-pow(length(p)*uFogDen*0.92, 2.0)), 0.0, 1.0);\n'+
+  '}',
+  FS_PRE+
+  'varying vec2 vUV; varying float vFade,vFog;\n'+
+  'uniform sampler2D uTex; uniform vec3 uLit,uShade,uFogCol;\n'+
+  'void main(){\n'+
+  '  vec4 t = texture2D(uTex, vUV);\n'+
+  '  vec3 col = mix(uShade, uLit, t.r);\n'+
+  '  col = mix(col, uFogCol, vFog);\n'+
+  '  gl_FragColor = vec4(col, t.a*vFade*(1.0-vFog*0.85));\n'+
+  '}',
+  ['aCtr','aCrn','aUV','aFade'],
+  ['uVP','uRight','uUp','uFogDen','uTex','uLit','uShade','uFogCol']
+);
+
+/* ---------------- geometry helpers ---------------- */
+var STRIDE = 20; // 3 float pos, 3 byte normal + pad, 4 byte rgba
+var attribOn = new Array(16).fill(false);
+function setAttribs(list){
+  for (var i=0;i<16;i++){
+    var want = list.indexOf(i)!==-1;
+    if (want && !attribOn[i]){ gl.enableVertexAttribArray(i); attribOn[i]=true; }
+    else if (!want && attribOn[i]){ gl.disableVertexAttribArray(i); attribOn[i]=false; }
+  }
+}
+function bindMain(vbo){
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.vertexAttribPointer(progMain.a.aPos, 3, gl.FLOAT, false, STRIDE, 0);
+  gl.vertexAttribPointer(progMain.a.aNrm, 3, gl.BYTE, true, STRIDE, 12);
+  gl.vertexAttribPointer(progMain.a.aCol, 4, gl.UNSIGNED_BYTE, true, STRIDE, 16);
+}
+/* mesh builder: pushes flat-shaded tris into arrays through 2 views on one buffer */
+function MeshBuilder(maxVerts){
+  this.buf = new ArrayBuffer(maxVerts*STRIDE);
+  this.f32 = new Float32Array(this.buf);
+  this.u8  = new Uint8Array(this.buf);
+  this.n = 0;
+}
+MeshBuilder.prototype.vert = function(x,y,z, nx,ny,nz, r,g,b,a){
+  var i=this.n, f=i*5, u=i*STRIDE;
+  this.f32[f]=x; this.f32[f+1]=y; this.f32[f+2]=z;
+  this.u8[u+12]=(nx*127)|0 & 255; this.u8[u+13]=(ny*127)|0 & 255; this.u8[u+14]=(nz*127)|0 & 255;
+  this.u8[u+16]=r>255?255:(r<0?0:r);
+  this.u8[u+17]=g>255?255:(g<0?0:g);
+  this.u8[u+18]=b>255?255:(b<0?0:b);
+  this.u8[u+19]=(a===undefined?255:a);
+  this.n++;
+};
+MeshBuilder.prototype.tri = function(p0,p1,p2, col, alpha){
+  var u=vsub(p1,p0), v=vsub(p2,p0), n=vnorm(vcross(u,v));
+  this.vert(p0[0],p0[1],p0[2], n[0],n[1],n[2], col[0],col[1],col[2], alpha);
+  this.vert(p1[0],p1[1],p1[2], n[0],n[1],n[2], col[0],col[1],col[2], alpha);
+  this.vert(p2[0],p2[1],p2[2], n[0],n[1],n[2], col[0],col[1],col[2], alpha);
+};
+MeshBuilder.prototype.quad = function(c0,c1,c2,c3, col, alpha){
+  this.tri(c0,c1,c2,col,alpha); this.tri(c0,c2,c3,col,alpha);
+};
+MeshBuilder.prototype.box = function(cx,cy,cz, sx,sy,sz, col, warp){
+  var x0=cx-sx/2,x1=cx+sx/2, y0=cy-sy/2,y1=cy+sy/2, z0=cz-sz/2,z1=cz+sz/2;
+  function W(p){ return warp ? warp(p[0],p[1],p[2]) : p; }
+  var q = this.quad.bind(this);
+  q(W([x1,y0,z0]),W([x1,y1,z0]),W([x1,y1,z1]),W([x1,y0,z1]),col);
+  q(W([x0,y0,z1]),W([x0,y1,z1]),W([x0,y1,z0]),W([x0,y0,z0]),col);
+  q(W([x0,y1,z0]),W([x0,y1,z1]),W([x1,y1,z1]),W([x1,y1,z0]),col);
+  q(W([x0,y0,z0]),W([x1,y0,z0]),W([x1,y0,z1]),W([x0,y0,z1]),col);
+  q(W([x0,y0,z1]),W([x1,y0,z1]),W([x1,y1,z1]),W([x0,y1,z1]),col);
+  q(W([x0,y0,z0]),W([x0,y1,z0]),W([x1,y1,z0]),W([x1,y0,z0]),col);
+};
+MeshBuilder.prototype.upload = function(usage){
+  var vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, this.u8.subarray(0, this.n*STRIDE), usage||gl.STATIC_DRAW);
+  return {vbo:vbo, count:this.n};
+};
+
+/* ---------------- terrain chunks ---------------- */
+var CH_SIZE=640, CH_Q=20, CELL=CH_SIZE/CH_Q;
+var CH_VERTS = CH_Q*CH_Q*6;
+var chunkBuilder = new MeshBuilder(CH_VERTS);
+var hGrid = new Float64Array((CH_Q+1)*(CH_Q+1));
+var chunks = new Map();     // "cx,cz" -> {vbo,count,x0,z0}
+var vboPool = [];
+var viewChunks = 4.3;       // radius, in chunks (adaptive quality may lower it)
+
+function buildChunk(cx, cz){
+  var x0=cx*CH_SIZE, z0=cz*CH_SIZE;
+  var i,j;
+  for (j=0;j<=CH_Q;j++) for (i=0;i<=CH_Q;i++)
+    hGrid[j*(CH_Q+1)+i] = heightAt(x0+i*CELL, z0+j*CELL);
+  var mb = chunkBuilder; mb.n = 0;
+  for (j=0;j<CH_Q;j++) for (i=0;i<CH_Q;i++){
+    var lx0=i*CELL, lz0=j*CELL, lx1=lx0+CELL, lz1=lz0+CELL;
+    var h00=hGrid[j*(CH_Q+1)+i],     h10=hGrid[j*(CH_Q+1)+i+1],
+        h01=hGrid[(j+1)*(CH_Q+1)+i], h11=hGrid[(j+1)*(CH_Q+1)+i+1];
+    var A=[lx0,h00,lz0], B=[lx1,h10,lz0], C=[lx0,h01,lz1], D=[lx1,h11,lz1];
+    var t1, t2;
+    if (((i+j)&1)===0){ t1=[A,C,B]; t2=[B,C,D]; } else { t1=[A,C,D]; t2=[A,D,B]; }
+    pushTerrainTri(mb, t1, x0, z0, i*2+j*131);
+    pushTerrainTri(mb, t2, x0, z0, i*2+1+j*131);
+  }
+  var vbo = vboPool.pop() || gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, mb.u8.subarray(0, mb.n*STRIDE), gl.STATIC_DRAW);
+  return {vbo:vbo, count:mb.n, x0:x0, z0:z0};
+}
+function pushTerrainTri(mb, t, x0, z0, faceId){
+  var p0=t[0], p1=t[1], p2=t[2];
+  var u=vsub(p1,p0), v=vsub(p2,p0), n=vnorm(vcross(u,v));
+  var mh=(p0[1]+p1[1]+p2[1])/3;
+  var mx=x0+(p0[0]+p1[0]+p2[0])/3, mz=z0+(p0[2]+p1[2]+p2[2])/3;
+  var rnd = hash2(Math.floor(mx*7.3), Math.floor(mz*7.3)+faceId);
+  var c = terrainColor(mh, n[1], mx, mz, rnd);
+  mb.vert(p0[0],p0[1],p0[2], n[0],n[1],n[2], c[0],c[1],c[2]);
+  mb.vert(p1[0],p1[1],p1[2], n[0],n[1],n[2], c[0],c[1],c[2]);
+  mb.vert(p2[0],p2[1],p2[2], n[0],n[1],n[2], c[0],c[1],c[2]);
+}
+var pendingChunks = [];
+function updateChunks(px, pz, budget){
+  var ccx=Math.floor(px/CH_SIZE), ccz=Math.floor(pz/CH_SIZE);
+  var R=Math.ceil(viewChunks), r2=viewChunks*viewChunks;
+  pendingChunks.length = 0;
+  for (var dz=-R;dz<=R;dz++) for (var dx=-R;dx<=R;dx++){
+    if (dx*dx+dz*dz > r2+1.5) continue;
+    var cx=ccx+dx, cz=ccz+dz, key=cx+','+cz;
+    if (!chunks.has(key)) pendingChunks.push([dx*dx+dz*dz, cx, cz, key]);
+  }
+  pendingChunks.sort(function(a,b){ return a[0]-b[0]; });
+  var n = Math.min(budget, pendingChunks.length);
+  for (var i=0;i<n;i++){
+    var p=pendingChunks[i];
+    chunks.set(p[3], buildChunk(p[1], p[2]));
+  }
+  var kill = (viewChunks+1.2)*(viewChunks+1.2);
+  chunks.forEach(function(ch, key){
+    var kx=ch.x0/CH_SIZE-ccx+0.5, kz=ch.z0/CH_SIZE-ccz+0.5;
+    if (kx*kx+kz*kz > kill+2){ vboPool.push(ch.vbo); chunks.delete(key); }
+  });
+}
+
+/* frustum culling */
+var frPlanes = new Float32Array(24);
+function extractFrustum(m){
+  function set(o, a,b,c,d){
+    var l=Math.sqrt(a*a+b*b+c*c)||1;
+    frPlanes[o]=a/l; frPlanes[o+1]=b/l; frPlanes[o+2]=c/l; frPlanes[o+3]=d/l;
+  }
+  function e(i,j){ return m[j*4+i]; }
+  set(0,  e(3,0)+e(0,0), e(3,1)+e(0,1), e(3,2)+e(0,2), e(3,3)+e(0,3));
+  set(4,  e(3,0)-e(0,0), e(3,1)-e(0,1), e(3,2)-e(0,2), e(3,3)-e(0,3));
+  set(8,  e(3,0)+e(1,0), e(3,1)+e(1,1), e(3,2)+e(1,2), e(3,3)+e(1,3));
+  set(12, e(3,0)-e(1,0), e(3,1)-e(1,1), e(3,2)-e(1,2), e(3,3)-e(1,3));
+  set(16, e(3,0)+e(2,0), e(3,1)+e(2,1), e(3,2)+e(2,2), e(3,3)+e(2,3));
+  set(20, e(3,0)-e(2,0), e(3,1)-e(2,1), e(3,2)-e(2,2), e(3,3)-e(2,3));
+}
+function sphereVisible(x,y,z,r){
+  for (var i=0;i<24;i+=4)
+    if (frPlanes[i]*x+frPlanes[i+1]*y+frPlanes[i+2]*z+frPlanes[i+3] < -r) return false;
+  return true;
+}
+
+/* ---------------- sky / water buffers ---------------- */
+var skyPosBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, skyPosBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, 1,1, -1,1]), gl.STATIC_DRAW);
+var skyRayBuf = gl.createBuffer();
+var skyRayArr = new Float32Array(12);
+var skyIdx = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, skyIdx);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0,1,2, 0,2,3]), gl.STATIC_DRAW);
+
+var WATER_R = 8200;
+var waterBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, waterBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-WATER_R,-WATER_R, WATER_R,-WATER_R, WATER_R,WATER_R, -WATER_R,WATER_R]), gl.STATIC_DRAW);
+
+/* ---------------- cloud sprites ---------------- */
+function makeCloudTexture(){
+  var cv = document.createElement('canvas'); cv.width=cv.height=128;
+  var c = cv.getContext('2d');
+  c.clearRect(0,0,128,128);
+  for (var i=0;i<26;i++){
+    var r1 = hash2(i,7), r2 = hash2(i,13), r3 = hash2(i,29);
+    var x = 24+r1*80, y = 46+r2*42, r = 10+r3*20;
+    if (y+r>120) y=120-r;
+    var g = c.createRadialGradient(x,y,0, x,y,r);
+    var a = 0.5+0.35*hash2(i,41);
+    g.addColorStop(0, 'rgba(255,255,255,'+a+')');
+    g.addColorStop(0.65, 'rgba(255,255,255,'+(a*0.5)+')');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(x,y,r,0,7); c.fill();
+  }
+  c.globalCompositeOperation='source-atop';
+  var sh = c.createLinearGradient(0,20,0,120);
+  sh.addColorStop(0,'rgba(255,255,255,1)');
+  sh.addColorStop(1,'rgba(120,120,140,1)');
+  c.fillStyle=sh; c.fillRect(0,0,128,128);
+  var tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+var cloudTex = makeCloudTexture();
+
+var N_CLOUDS = 46, MAX_PUFFS = N_CLOUDS*5+4;
+var clouds = [];
+function spawnCloud(cl, px, pz, ahead, headx, headz){
+  var ang, dist;
+  if (ahead){ ang = Math.atan2(headx, headz) + (Math.random()*2-1)*1.5; dist = 3300+Math.random()*700; }
+  else      { ang = Math.random()*Math.PI*2;                            dist = Math.random()*3600+300; }
+  cl.x = px + Math.sin(ang)*dist;
+  cl.z = pz + Math.cos(ang)*dist;
+  var h = heightAt(cl.x, cl.z);
+  cl.y = 430 + Math.random()*520;
+  if (h > cl.y-60) cl.y = h + 140 + Math.random()*160;
+  cl.scale = 90+Math.random()*130;
+  cl.fade = 0;
+  cl.nPuffs = 3+(Math.random()*3|0);
+  cl.puffs = [];
+  for (var i=0;i<cl.nPuffs;i++){
+    cl.puffs.push({
+      dx:(Math.random()-0.5)*1.6*cl.scale,
+      dy:(Math.random()-0.5)*0.34*cl.scale,
+      dz:(Math.random()-0.5)*1.6*cl.scale,
+      s: cl.scale*(0.6+Math.random()*0.55)
+    });
+  }
+}
+for (var ci=0;ci<N_CLOUDS;ci++){ var cl={}; spawnCloud(cl, 0, 0, false, 0, 1); clouds.push(cl); }
+
+var cloudArr = new Float32Array(MAX_PUFFS*4*8);
+var cloudBuf = gl.createBuffer();
+var cloudIdx = gl.createBuffer();
+(function(){
+  var idx = new Uint16Array(MAX_PUFFS*6);
+  for (var i=0;i<MAX_PUFFS;i++){
+    var b=i*4, o=i*6;
+    idx[o]=b; idx[o+1]=b+1; idx[o+2]=b+2; idx[o+3]=b; idx[o+4]=b+2; idx[o+5]=b+3;
+  }
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cloudIdx);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+})();
+
+/* ---------------- the aeroplane ---------------- */
+var CREAM=[242,232,214], CORAL=[224,104,90], GLASS=[64,110,128], DARKC=[188,74,64], WOODP=[92,74,60];
+function buildPlane(){
+  var mb = new MeshBuilder(4096);
+  /* fuselage — pinched toward the tail */
+  mb.box(0, 0, -0.15, 1.12, 1.06, 5.4, CREAM, function(x,y,z){
+    var t = clamp((z+2.85)/5.4, 0, 1);
+    var pinch = 0.5 + 0.5*Math.sin(Math.min(t*2.3, Math.PI*0.5));
+    return [x*pinch, y*pinch + (1-pinch)*0.2, z];
+  });
+  mb.box(0, -0.02, 2.86, 0.94, 0.92, 0.62, CORAL);
+  mb.box(0, 0.63, 0.72, 0.72, 0.5, 1.35, GLASS, function(x,y,z){
+    var t = clamp((z-0.05)/1.35+0.5, 0, 1);
+    return [x*(1-0.35*t), y - 0.2*t*t, z];
+  });
+  /* high wing — tapered, swept, gentle dihedral */
+  mb.box(0, 0.5, 0.55, 10.6, 0.17, 1.95, CREAM, function(x,y,z){
+    var a = Math.abs(x)/5.3;
+    return [x, y + a*a*0.5, (z-0.55)*(1-0.34*a) + 0.55 - a*0.75];
+  });
+  mb.box(-5.52, 0.94, -0.14, 0.62, 0.2, 1.34, CORAL);
+  mb.box( 5.52, 0.94, -0.14, 0.62, 0.2, 1.34, CORAL);
+  /* wing struts: fuselage belly up to mid-wing */
+  mb.box(-1.7, 0, 0.62, 2.6, 0.07, 0.09, CREAM, function(x,y,z){
+    return [x, y - (x+0.4)*0.373 - 0.35, z];
+  });
+  mb.box( 1.7, 0, 0.62, 2.6, 0.07, 0.09, CREAM, function(x,y,z){
+    return [x, y + (x-0.4)*0.373 - 0.35, z];
+  });
+  /* tail */
+  mb.box(0, 0.24, -2.72, 3.9, 0.12, 0.92, CREAM, function(x,y,z){
+    var a=Math.abs(x)/1.95; return [x, y, (z+2.72)*(1-0.3*a) - 2.72 - a*0.34];
+  });
+  mb.box(0, 0.85, -2.72, 0.12, 1.5, 1.15, CORAL, function(x,y,z){
+    var a=clamp((y-0.1)/1.5, 0, 1); return [x, y, (z+2.72)*(1-0.45*a) - 2.72 - a*0.62];
+  });
+  /* gear */
+  mb.box(-1.45, -0.8, 1.5, 0.44, 0.44, 0.44, DARKC);
+  mb.box( 1.45, -0.8, 1.5, 0.44, 0.44, 0.44, DARKC);
+  mb.box(0, -0.58, -2.6, 0.22, 0.28, 0.22, DARKC);
+  return mb.upload();
+}
+function buildProp(){
+  var mb = new MeshBuilder(256);
+  mb.box(0, 0, 0.1, 0.26, 0.26, 0.36, DARKC);
+  mb.box(0, 0.63, 0, 0.15, 1.16, 0.05, WOODP);
+  mb.box(0, -0.63, 0, 0.15, 1.16, 0.05, WOODP);
+  return mb.upload();
+}
+function buildDisc(){
+  var mb = new MeshBuilder(20*3);
+  var R=1.26;
+  for (var i=0;i<20;i++){
+    var a0=i/20*Math.PI*2, a1=(i+1)/20*Math.PI*2;
+    mb.tri([0,0,0],[Math.cos(a0)*R,Math.sin(a0)*R,0],[Math.cos(a1)*R,Math.sin(a1)*R,0], [230,225,215], 34);
+  }
+  return mb.upload();
+}
+var planeMesh = buildPlane(), propMesh = buildProp(), discMesh = buildDisc();
+var PROP_POS = [0, -0.02, 3.3];
+
+/* ---------------- flight physics ---------------- */
+var P = {
+  g:9.81, tMax:10.2, kL:0.030, cd0:0.0034, kInd:0.0055,
+  clA:4.6, cl0:0.30, aStall:0.29, clMax:1.52,
+  rollMax:2.5, pitchMax:1.15, yawMax:0.6,
+  tauR:0.12, tauP:0.2, tauY:0.32,
+  kLvl:1.35, kPitStab:2.1, kYawStab:1.5, aTrim:0.035,
+  windX:1.8, windZ:-1.1
+};
+function freshState(x, z, heading){
+  var h = heightAt(x||0, z||0);
+  return {
+    px:x||0, py:Math.max(h,SEA)+260, pz:z||0,
+    vx:Math.sin(heading||0)*34, vy:0, vz:Math.cos(heading||0)*34,
+    q: qAxisAngle([0,1,0], heading||0),
+    wx:0, wy:0, wz:0,
+    throttle:0.75, stall:0, alpha:0, gload:1, onGround:false, crashed:0
+  };
+}
+function physStep(st, inp, dt){
+  var q = st.q;
+  var fwd = qRot(q,[0,0,1]), up = qRot(q,[0,1,0]), rt = qRot(q,[1,0,0]);
+  var avx = st.vx - P.windX, avy = st.vy, avz = st.vz - P.windZ;
+  var spd = Math.sqrt(avx*avx+avy*avy+avz*avz);
+  var iv = spd>0.001 ? 1/spd : 0;
+  var dx=avx*iv, dy=avy*iv, dz=avz*iv;
+
+  var vl_x = avx*rt[0]+avy*rt[1]+avz*rt[2];
+  var vl_y = avx*up[0]+avy*up[1]+avz*up[2];
+  var vl_z = avx*fwd[0]+avy*fwd[1]+avz*fwd[2];
+  var alpha = Math.atan2(-vl_y, Math.max(vl_z, 4));
+  var beta  = Math.atan2(vl_x, Math.max(vl_z, 4));
+  st.alpha = alpha;
+
+  var cl = P.cl0 + P.clA*alpha;
+  var stall = 0;
+  if (cl > P.clMax){ stall = clamp((cl-P.clMax)*2.2, 0, 1); cl = P.clMax - (cl-P.clMax)*0.75; }
+  if (cl < -1.0){ cl = -1.0 - (cl+1.0)*0.5; stall = clamp((-1.0-cl)*2, 0, 1); }
+  st.stall += (stall - st.stall)*expDamp(6,dt);
+
+  var qbar = 0.5*spd*spd;
+  var lift = clamp(P.kL*qbar*cl, -46, 46);
+  var lx = up[0]-dx*(up[0]*dx+up[1]*dy+up[2]*dz),
+      ly = up[1]-dy*(up[0]*dx+up[1]*dy+up[2]*dz),
+      lz = up[2]-dz*(up[0]*dx+up[1]*dy+up[2]*dz);
+  var ll = Math.sqrt(lx*lx+ly*ly+lz*lz);
+  if (ll>0.01){ lx/=ll; ly/=ll; lz/=ll; } else { lx=up[0]; ly=up[1]; lz=up[2]; }
+
+  var drag = qbar*(P.cd0 + P.kInd*cl*cl + 0.9*beta*beta);
+  var thrust = P.tMax*st.throttle*(1 - spd*0.0056);
+  var sideA = clamp(-qbar*0.020*beta, -12, 12);
+
+  var ax = thrust*fwd[0] - drag*dx + lift*lx + sideA*rt[0];
+  var ay = thrust*fwd[1] - drag*dy + lift*ly + sideA*rt[1] - P.g;
+  var az = thrust*fwd[2] - drag*dz + lift*lz + sideA*rt[2];
+  st.gload = Math.abs(lift)/P.g;
+
+  st.vx += ax*dt; st.vy += ay*dt; st.vz += az*dt;
+  st.px += st.vx*dt; st.py += st.vy*dt; st.pz += st.vz*dt;
+
+  var eff = clamp(spd/26, 0.12, 1.18);
+  var wxT, wzT, wyT = inp.yaw*P.yawMax*eff;
+  if (inp.assist){
+    /* stick x commands a bank angle (max ~57°); turns stay coordinated */
+    var bank = Math.atan2(-rt[1], Math.max(up[1], 0.05));
+    var bankT = clamp(inp.roll, -1, 1)*1.0;
+    wzT = clamp(-(bankT-bank)*2.6, -P.rollMax, P.rollMax)*eff;
+    /* stick y commands pitch rate, softened near vertical attitudes */
+    var pc = inp.pitch;
+    if (pc > 0) pc *= 1 - smoothstep(0.45, 0.85, fwd[1])*0.85;
+    else        pc *= 1 - smoothstep(-0.4, -0.8, fwd[1])*0.8;
+    wxT = -pc*P.pitchMax*eff;
+    if (Math.abs(inp.pitch)<0.06)
+      wxT += clamp(fwd[1]-0.02, -0.5, 0.5)*0.85*eff;
+  } else {
+    wzT = -inp.roll*P.rollMax*eff;
+    wxT = -inp.pitch*P.pitchMax*eff;
+  }
+  wxT += (alpha - P.aTrim)*P.kPitStab*eff*(inp.assist?1:0.5);
+  wyT += beta*P.kYawStab*eff;
+  var tn = st.turb||0;
+  wxT += Math.sin(st.px*0.01+performanceNow01()*1.9)*0.012*(1+tn*8);
+  wzT += Math.sin(st.pz*0.013+performanceNow01()*1.4)*0.016*(1+tn*8);
+
+  st.wx += (wxT-st.wx)*expDamp(1/P.tauP,dt);
+  st.wy += (wyT-st.wy)*expDamp(1/P.tauY,dt);
+  st.wz += (wzT-st.wz)*expDamp(1/P.tauR,dt);
+
+  var h = st.wx*dt/2, k = st.wy*dt/2, l = st.wz*dt/2;
+  var dq = qMul(q, [h,k,l,0]);
+  st.q = qNorm([q[0]+dq[0], q[1]+dq[1], q[2]+dq[2], q[3]+dq[3]]);
+
+  var gH = Math.max(heightAt(st.px, st.pz), SEA);
+  var clearance = st.py - gH;
+  st.onGround = false;
+  if (clearance < 2.2){
+    var impact = -st.vy;
+    var overWater = heightAt(st.px, st.pz) < SEA;
+    if (impact > 11 || st.stall > 0.85 && impact > 6){
+      st.crashed = overWater ? 2 : 1;
+    } else {
+      st.py = gH + 2.2;
+      if (st.vy < 0) st.vy = -st.vy*0.32 + 1.2;
+      st.vx *= 0.985; st.vz *= 0.985;
+      st.onGround = true;
+      st.bounced = overWater ? 2 : 1;
+    }
+  }
+  return st;
+}
+var _pn0 = (typeof performance!=='undefined') ? performance.now() : 0;
+function performanceNow01(){ return ((typeof performance!=='undefined'?performance.now():0)-_pn0)/1000; }
+
+/* ---------------- palette / day cycle ---------------- */
+var PAL_KEYS = [
+  { el:44, zen:[0.44,0.70,0.94], hor:[0.84,0.92,0.97], sun:[1.00,0.97,0.90],
+    lig:[1.10,1.05,0.95], ambS:[0.50,0.58,0.70], ambG:[0.34,0.33,0.30],
+    cLit:[1.02,1.01,0.99], cSh:[0.70,0.76,0.88], deep:[0.10,0.35,0.42] },
+  { el:18, zen:[0.38,0.53,0.85], hor:[0.99,0.77,0.57], sun:[1.00,0.87,0.60],
+    lig:[1.12,0.90,0.66], ambS:[0.50,0.47,0.57], ambG:[0.38,0.32,0.28],
+    cLit:[1.08,0.89,0.72], cSh:[0.64,0.58,0.72], deep:[0.12,0.30,0.40] },
+  { el:9,  zen:[0.26,0.31,0.60], hor:[0.88,0.60,0.64], sun:[1.00,0.70,0.50],
+    lig:[0.90,0.66,0.58], ambS:[0.42,0.41,0.58], ambG:[0.29,0.27,0.32],
+    cLit:[0.99,0.76,0.71], cSh:[0.50,0.48,0.70], deep:[0.09,0.22,0.36] }
+];
+var pal = { sunDir:[0,1,0] };
+function updatePalette(timeSec){
+  var ph = 1 + Math.sin(timeSec*2*Math.PI/420 - 0.6);   // 0..2 over 7 min
+  var i0 = Math.min(Math.floor(ph), 1), t = smoothstep(0,1, ph-i0);
+  var A = PAL_KEYS[i0], B = PAL_KEYS[i0+1];
+  ['zen','hor','sun','lig','ambS','ambG','cLit','cSh','deep'].forEach(function(k){
+    pal[k] = vlerp(A[k], B[k], t);
+  });
+  var el = lerp(A.el, B.el, t)*Math.PI/180;
+  var az = (318 + timeSec*0.05)*Math.PI/180;
+  pal.sunDir = [Math.cos(el)*Math.sin(az), Math.sin(el), Math.cos(el)*Math.cos(az)];
+}
+
+/* ---------------- audio: 8-bit ambience ---------------- */
+function pulseWave(actx, duty){
+  var N=32, re=new Float32Array(N), im=new Float32Array(N);
+  for (var n=1;n<N;n++) im[n] = Math.sin(Math.PI*n*duty)*2/(Math.PI*n);
+  return actx.createPeriodicWave(re, im, {disableNormalization:false});
+}
+var SCALE = [60,62,64,67,69,72,74,76,79,81,84];   // C major pentatonic, two octaves+
+var CHORDS = [
+  { bass:36, pad:[48,55,64], tones:[60,64,67,71] },
+  { bass:33, pad:[45,52,60], tones:[57,60,64,67] },
+  { bass:29, pad:[41,48,57], tones:[53,57,60,65] },
+  { bass:31, pad:[43,50,59], tones:[55,59,62,67] }
+];
+function mtof(m){ return 440*Math.pow(2,(m-69)/12); }
+
+function createAudio(actx, seed){
+  var rngS = seed||12345;
+  function rnd(){ rngS = (Math.imul(rngS,1103515245)+12345)>>>0; return rngS/4294967296; }
+
+  var master = actx.createGain(); master.gain.value = 0.9;
+  var comp = actx.createDynamicsCompressor();
+  comp.threshold.value=-20; comp.knee.value=18; comp.ratio.value=4;
+  comp.attack.value=0.008; comp.release.value=0.24;
+  master.connect(comp); comp.connect(actx.destination);
+
+  var musicBus = actx.createGain(); musicBus.gain.value=1; musicBus.connect(master);
+  var sfxBus = actx.createGain(); sfxBus.gain.value=1; sfxBus.connect(master);
+
+  var echo = actx.createDelay(1.0); echo.delayTime.value = 0.318;
+  var echoFb = actx.createGain(); echoFb.gain.value = 0.36;
+  var echoLP = actx.createBiquadFilter(); echoLP.type='lowpass'; echoLP.frequency.value=2400;
+  var echoOut = actx.createGain(); echoOut.gain.value = 0.7;
+  echo.connect(echoLP); echoLP.connect(echoFb); echoFb.connect(echo);
+  echoLP.connect(echoOut); echoOut.connect(musicBus);
+
+  var p125 = pulseWave(actx, 0.125), p25 = pulseWave(actx, 0.25);
+
+  /* --- engine / wind --- */
+  var engGain = actx.createGain(); engGain.gain.value = 0;
+  var engLP = actx.createBiquadFilter(); engLP.type='lowpass'; engLP.frequency.value=420; engLP.Q.value=0.7;
+  var eo1 = actx.createOscillator(); eo1.type='square'; eo1.frequency.value=44;
+  var eo2 = actx.createOscillator(); eo2.type='square'; eo2.frequency.value=44*1.011;
+  var eMix = actx.createGain(); eMix.gain.value=0.5;
+  eo1.connect(eMix); eo2.connect(eMix); eMix.connect(engLP); engLP.connect(engGain); engGain.connect(sfxBus);
+  var putt = actx.createOscillator(); putt.type='sine'; putt.frequency.value=13;
+  var puttG = actx.createGain(); puttG.gain.value=0.0;
+  putt.connect(puttG); puttG.connect(engGain.gain);
+  eo1.start(); eo2.start(); putt.start();
+
+  var noiseBuf = actx.createBuffer(1, actx.sampleRate*1.5, actx.sampleRate);
+  (function(){ var d=noiseBuf.getChannelData(0); for (var i=0;i<d.length;i++) d[i]=Math.random()*2-1; })();
+  var wind = actx.createBufferSource(); wind.buffer=noiseBuf; wind.loop=true;
+  var windBP = actx.createBiquadFilter(); windBP.type='bandpass'; windBP.frequency.value=700; windBP.Q.value=0.55;
+  var windG = actx.createGain(); windG.gain.value=0;
+  wind.connect(windBP); windBP.connect(windG); windG.connect(sfxBus);
+  wind.start();
+
+  var engCur=0, windCur=0;
+  function updateEngine(thr, spd, dt, on){
+    var f = 40 + thr*46 + spd*0.14;
+    eo1.frequency.value = f; eo2.frequency.value = f*1.011;
+    engLP.frequency.value = 280 + thr*820 + spd*4;
+    putt.frequency.value = 10 + thr*17;
+    puttG.gain.value = 0.028*(1-thr*0.55);
+    var target = on ? (0.030 + 0.105*thr) : 0;
+    engCur += (target-engCur)*expDamp(3,dt);
+    engGain.gain.value = engCur;
+    var wt = on ? clamp((spd-13)/70,0,1)*0.14 : 0;
+    windCur += (wt-windCur)*expDamp(3,dt);
+    windG.gain.value = windCur;
+    windBP.frequency.value = 420 + spd*11;
+  }
+
+  /* --- music scheduler --- */
+  var BPM=71, STEP=60/BPM/2;
+  var musicOn=false, t0=0, nextStep=0;
+  var phraseCache = new Map();
+  var lastMel = 4;
+
+  function note(waveOrType, midi, t, dur, peak, dest, glideCents, vib){
+    var o = actx.createOscillator();
+    if (typeof waveOrType === 'string') o.type = waveOrType; else o.setPeriodicWave(waveOrType);
+    o.frequency.value = mtof(midi);
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t+0.02);
+    g.gain.setTargetAtTime(0, t+dur, 0.14);
+    o.connect(g); g.connect(dest);
+    if (vib){
+      var lf = actx.createOscillator(); lf.frequency.value = 5.2;
+      var lg = actx.createGain(); lg.gain.value = mtof(midi)*0.007;
+      lf.connect(lg); lg.connect(o.frequency);
+      lf.start(t+0.25); lf.stop(t+dur+0.7);
+    }
+    o.start(t); o.stop(t+dur+0.8);
+  }
+  function padNote(midi, t, dur, peak){
+    var o1=actx.createOscillator(); o1.setPeriodicWave(p25); o1.frequency.value=mtof(midi);
+    var o2=actx.createOscillator(); o2.setPeriodicWave(p25); o2.frequency.value=mtof(midi)*1.004;
+    var g=actx.createGain();
+    g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(peak, t+2.2);
+    g.gain.setValueAtTime(peak, t+dur-2.4);
+    g.gain.linearRampToValueAtTime(0.0001, t+dur);
+    var lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1150;
+    o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(musicBus);
+    o1.start(t); o2.start(t); o1.stop(t+dur+0.2); o2.stop(t+dur+0.2);
+  }
+  function phrase(idx){
+    if (phraseCache.has(idx)) return phraseCache.get(idx);
+    var notes = [];
+    if (idx===0 || rnd()>0.30){
+      var n = 3+(rnd()*4|0), off=1+(rnd()*3|0);
+      for (var i=0;i<n && off<15;i++){
+        var stepJump = rnd();
+        lastMel = clamp(lastMel + (stepJump<0.18?-2 : stepJump<0.5?-1 : stepJump<0.82?1:2), 0, SCALE.length-1);
+        var len = 2+(rnd()*4|0);
+        notes.push({off:off, midi:SCALE[lastMel]+12, len:len, vel:0.5+rnd()*0.5});
+        off += len + ((rnd()<0.35)?2:0);
+      }
+    }
+    if (phraseCache.size>64) phraseCache.clear();
+    phraseCache.set(idx, notes);
+    return notes;
+  }
+  function scheduleStep(step, t){
+    var chord = CHORDS[Math.floor(step/16)%CHORDS.length];
+    var inBar = step%8, inChord = step%16;
+    if (inChord===0){
+      chord.pad.forEach(function(m,i){ padNote(m, t, STEP*16+1.5, 0.038-i*0.007); });
+      note('triangle', chord.bass, t, STEP*7, 0.16, musicBus);
+    }
+    if (inBar===4) note('triangle', chord.bass+12, t, STEP*3, 0.07, musicBus);
+    if (inBar>0 && rnd()<0.42){
+      var tone = chord.tones[(step*7+((rnd()*4)|0))%chord.tones.length];
+      note(p25, tone+12, t+(rnd()-0.5)*0.012, STEP*0.9, 0.030, echo);
+      note(p25, tone+12, t, STEP*0.9, 0.026, musicBus);
+    }
+    var ph = phrase(Math.floor(step/16));
+    for (var i=0;i<ph.length;i++){
+      var nt = ph[i];
+      if (nt.off === inChord){
+        var dur = nt.len*STEP*0.92;
+        note(p125, nt.midi, t, dur, 0.052*nt.vel, musicBus, 0, nt.len>=4);
+        note(p125, nt.midi, t, dur, 0.062*nt.vel, echo, 0, false);
+      }
+    }
+    if (step%64===56 && rnd()<0.6){
+      note('triangle', 96+((rnd()*2)|0)*3, t, STEP*5, 0.028, echo);
+    }
+  }
+  function scheduleWindow(until){
+    if (!musicOn) return;
+    var now = actx.currentTime;
+    if (t0 + nextStep*STEP < now - 0.25)
+      nextStep = Math.ceil((now - t0)/STEP);
+    var guard = 0;
+    while (t0 + nextStep*STEP < until && guard++ < 64){
+      scheduleStep(nextStep, t0 + nextStep*STEP);
+      nextStep++;
+    }
+  }
+  function startMusic(at){
+    if (musicOn) return;
+    musicOn = true;
+    if (t0===0){ t0 = at; nextStep=0; }
+    else nextStep = Math.max(nextStep, Math.ceil((at-t0)/STEP)+1);
+  }
+  function stopMusic(){ musicOn=false; }
+
+  /* --- one-shot sfx --- */
+  function chime(){
+    var t=actx.currentTime;
+    for (var i=0;i<3;i++){
+      var a = [0.05,0.024,0.011][i], dly = i*0.34;
+      note('triangle', 88, t+dly, 0.5, a, sfxBus);
+      note('triangle', 93, t+dly+0.22, 0.7, a*0.9, sfxBus);
+    }
+  }
+  function beep(){
+    var t=actx.currentTime;
+    note('square', 79, t, 0.10, 0.022, sfxBus);
+    note('square', 79, t+0.19, 0.10, 0.018, sfxBus);
+  }
+  function thud(strong){
+    var t=actx.currentTime;
+    var s=actx.createBufferSource(); s.buffer=noiseBuf;
+    var f=actx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=strong?260:180;
+    var g=actx.createGain();
+    g.gain.setValueAtTime(strong?0.5:0.22, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t+(strong?0.6:0.3));
+    s.connect(f); f.connect(g); g.connect(sfxBus);
+    s.start(t); s.stop(t+0.7);
+    note('triangle', 33, t, 0.3, strong?0.3:0.14, sfxBus);
+  }
+  function splash(){
+    var t=actx.currentTime;
+    var s=actx.createBufferSource(); s.buffer=noiseBuf;
+    var f=actx.createBiquadFilter(); f.type='highpass'; f.frequency.value=900;
+    var g=actx.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.28,t+0.05);
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.55);
+    s.connect(f); f.connect(g); g.connect(sfxBus);
+    s.start(t); s.stop(t+0.7);
+  }
+  function click(){
+    note('square', 96, actx.currentTime, 0.05, 0.03, sfxBus);
+  }
+
+  return {
+    ctx:actx, master:master, musicBus:musicBus,
+    updateEngine:updateEngine, scheduleWindow:scheduleWindow,
+    startMusic:startMusic, stopMusic:stopMusic,
+    isMusicOn:function(){ return musicOn; },
+    sfx:{chime:chime, beep:beep, thud:thud, splash:splash, click:click}
+  };
+}
+
+/* ---------------- settings ---------------- */
+function loadPref(k, dflt){
+  try { var v = localStorage.getItem('sd_'+k); return v===null ? dflt : v==='1'; }
+  catch(e){ return dflt; }
+}
+function savePref(k, v){ try { localStorage.setItem('sd_'+k, v?'1':'0'); } catch(e){} }
+var prefs = {
+  pull: loadPref('pull', true),
+  assist: loadPref('assist', true),
+  music: loadPref('music', true),
+  sound: loadPref('sound', true)
+};
+
+/* ---------------- input ---------------- */
+var input = { roll:0, pitch:0, yaw:0, assist:prefs.assist };
+var stick = { active:false, id:-1, ox:0, oy:0, x:0, y:0 };
+var keys = {};
+var throttleTarget = 0.75;
+var STICK_R = 64;
+
+var elRing=$('stickRing'), elNub=$('stickNub'), elThr=$('thr'), elThrFill=$('thrFill'), elThrPct=$('thrPct');
+
+function setStickUI(){
+  if (stick.active){
+    elRing.style.display='block'; elNub.style.display='block';
+    elRing.style.left=stick.ox+'px'; elRing.style.top=stick.oy+'px';
+    elNub.style.left=(stick.ox+stick.x*STICK_R)+'px';
+    elNub.style.top=(stick.oy+stick.y*STICK_R)+'px';
+  } else { elRing.style.display='none'; elNub.style.display='none'; }
+}
+function onPointerDown(e){
+  if (state.mode!=='flying') return;
+  if (e.target.closest && e.target.closest('.rbtn')) return;
+  if (e.target===elThr || (e.target.parentNode===elThr)) return;
+  if (e.clientX < window.innerWidth*0.55 && !stick.active){
+    stick.active=true; stick.id=e.pointerId;
+    stick.ox=e.clientX; stick.oy=e.clientY; stick.x=0; stick.y=0;
+    setStickUI();
+    $('stickHint').style.display='none';
+  }
+}
+function onPointerMove(e){
+  if (stick.active && e.pointerId===stick.id){
+    var dx=(e.clientX-stick.ox)/STICK_R, dy=(e.clientY-stick.oy)/STICK_R;
+    var l=Math.sqrt(dx*dx+dy*dy);
+    if (l>1){ dx/=l; dy/=l; }
+    stick.x=dx; stick.y=dy;
+    setStickUI();
+  }
+}
+function onPointerUp(e){
+  if (stick.active && e.pointerId===stick.id){
+    stick.active=false; stick.x=0; stick.y=0; setStickUI();
+  }
+}
+window.addEventListener('pointerdown', onPointerDown);
+window.addEventListener('pointermove', onPointerMove);
+window.addEventListener('pointerup', onPointerUp);
+window.addEventListener('pointercancel', onPointerUp);
+
+var thrDrag = {active:false, id:-1};
+function thrFromEvent(e){
+  var r = elThr.getBoundingClientRect();
+  throttleTarget = clamp(1-(e.clientY-r.top)/r.height, 0, 1);
+}
+elThr.addEventListener('pointerdown', function(e){
+  thrDrag.active=true; thrDrag.id=e.pointerId;
+  try { elThr.setPointerCapture(e.pointerId); } catch(err){}
+  thrFromEvent(e); e.stopPropagation();
+});
+elThr.addEventListener('pointermove', function(e){ if (thrDrag.active && e.pointerId===thrDrag.id) thrFromEvent(e); });
+elThr.addEventListener('pointerup', function(e){ if (e.pointerId===thrDrag.id) thrDrag.active=false; });
+
+window.addEventListener('keydown', function(e){
+  keys[e.code]=true;
+  if (e.code==='Escape'){ if (state.mode==='flying') openPause(); else if (state.mode==='paused') closeOverlay(); }
+  if (e.code==='KeyC') cycleCam();
+  if (e.code==='KeyM') toggleSound();
+  if (e.code.indexOf('Arrow')===0) e.preventDefault();
+});
+window.addEventListener('keyup', function(e){ keys[e.code]=false; });
+window.addEventListener('wheel', function(e){
+  if (state.mode==='flying') throttleTarget = clamp(throttleTarget - Math.sign(e.deltaY)*0.06, 0, 1);
+}, {passive:true});
+document.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
+
+function gatherInput(dt, st){
+  var kx=0, ky=0, kyaw=0;
+  if (keys['ArrowLeft'])  kx-=1;
+  if (keys['ArrowRight']) kx+=1;
+  if (keys['ArrowUp'])    ky-=1;
+  if (keys['ArrowDown'])  ky+=1;
+  if (keys['KeyA']) kyaw-=1;
+  if (keys['KeyD']) kyaw+=1;
+  if (keys['KeyW']) throttleTarget=clamp(throttleTarget+dt*0.45,0,1);
+  if (keys['KeyS']) throttleTarget=clamp(throttleTarget-dt*0.45,0,1);
+
+  var sx = stick.x, sy = stick.y;
+  sx = sx*Math.abs(sx)*0.65 + sx*0.35;
+  sy = sy*Math.abs(sy)*0.65 + sy*0.35;
+
+  var rawRoll = clamp(sx + kx, -1, 1);
+  var rawPitchScreen = clamp(sy + ky, -1, 1);
+  var rawPitch = prefs.pull ? rawPitchScreen : -rawPitchScreen;
+
+  input.roll  += (rawRoll  - input.roll )*expDamp(10,dt);
+  input.pitch += (rawPitch - input.pitch)*expDamp(10,dt);
+  input.yaw   += (clamp(kyaw,-1,1) - input.yaw)*expDamp(6,dt);
+  input.assist = prefs.assist;
+  st.throttle += (throttleTarget - st.throttle)*expDamp(3.5,dt);
+}
+
+/* menu autopilot: keeps the plane cruising behind the title screen */
+function autopilot(st, dt, t){
+  var lookX = st.px + (st.vx)*8, lookZ = st.pz + (st.vz)*8;
+  var target = Math.max(heightAt(lookX,lookZ), heightAt(st.px,st.pz), SEA) + 190;
+  var vyT = clamp((target-st.py)*0.06, -5, 7);
+  input.pitch = clamp((vyT-st.vy)*0.08, -0.4, 0.55);
+  input.roll = Math.sin(t*0.11)*0.12;
+  input.yaw = 0; input.assist = true;
+  st.throttle += (0.72 - st.throttle)*expDamp(2,dt);
+}
+
+/* ---------------- state / UI flow ---------------- */
+var state = {
+  mode:'menu',            // menu | flying | paused
+  cam:0, camPos:null, time0:performanceNow01(),
+  fovBase:62, quality:0, inCloudT:0, lastChime:-10, lastBeep:-10,
+  msgT:0
+};
+var sim = freshState(140, -60, 0.6);
+var audio = null;
+
+function ensureAudio(){
+  if (!audio){
+    try {
+      var AC = window.AudioContext||window.webkitAudioContext;
+      audio = createAudio(new AC(), (Math.random()*1e9)|0);
+    } catch(e){ ERRORS.push('audio: '+e); }
+  }
+  if (audio && audio.ctx.state!=='running') audio.ctx.resume();
+  applyAudioPrefs();
+}
+function applyAudioPrefs(){
+  if (!audio) return;
+  audio.master.gain.value = prefs.sound ? 0.9 : 0;
+  audio.musicBus.gain.value = prefs.music ? 1 : 0;
+}
+function toast(msg){
+  var t=$('toast'); t.textContent=msg; t.style.opacity=1; state.msgT=performanceNow01();
+}
+function openPause(){
+  state.mode='paused';
+  $('ov').classList.remove('hidden');
+  $('startBtn').textContent='RESUME ✈';
+  if (audio) audio.ctx.suspend();
+}
+function closeOverlay(){
+  ensureAudio();
+  if (audio){
+    if (prefs.music) audio.startMusic(audio.ctx.currentTime+0.25);
+  }
+  state.mode='flying';
+  $('ov').classList.add('hidden');
+  $('hud').classList.add('on');
+  $('startBtn').textContent='RESUME ✈';
+}
+$('startBtn').addEventListener('click', function(){
+  if (audio && audio.ctx.state!=='running') audio.ctx.resume();
+  if (audio) audio.sfx.click();
+  closeOverlay();
+});
+$('pauseBtn').addEventListener('click', openPause);
+function bindChip(id, key, cb){
+  var el=$(id);
+  function paint(){ el.classList.toggle('on', prefs[key]); }
+  el.addEventListener('click', function(){ prefs[key]=!prefs[key]; savePref(key,prefs[key]); paint(); if (cb) cb(); });
+  paint();
+}
+bindChip('chInv','pull');
+bindChip('chAst','assist');
+bindChip('chMus','music', applyAudioPrefs);
+
+function toggleSound(){ prefs.sound=!prefs.sound; savePref('sound',prefs.sound); applyAudioPrefs(); paintBtns(); }
+function toggleMusic(){ prefs.music=!prefs.music; savePref('music',prefs.music); applyAudioPrefs(); paintBtns(); }
+function cycleCam(){ state.cam=(state.cam+1)%3; if (audio) audio.sfx.click(); }
+function paintBtns(){
+  $('sndBtn').classList.toggle('off', !prefs.sound);
+  $('sndBtn').textContent = prefs.sound?'🔊':'🔇';
+  $('musBtn').classList.toggle('off', !prefs.music);
+}
+$('sndBtn').addEventListener('click', toggleSound);
+$('musBtn').addEventListener('click', toggleMusic);
+$('camBtn').addEventListener('click', cycleCam);
+$('fsBtn').addEventListener('click', function(){
+  var d=document, el=d.documentElement;
+  if (!d.fullscreenElement && el.requestFullscreen) el.requestFullscreen();
+  else if (d.exitFullscreen && d.fullscreenElement) d.exitFullscreen();
+});
+paintBtns();
+
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden && state.mode==='flying') openPause();
+  else if (!document.hidden && audio && state.mode!=='paused' && prefs.sound) audio.ctx.resume();
+});
+canvas.addEventListener('webglcontextlost', function(e){
+  e.preventDefault(); showFatal('graphics context lost — please reload.');
+});
+
+/* ---------------- camera ---------------- */
+var cam = { px:sim.px-40, py:sim.py+12, pz:sim.pz-40, up:[0,1,0] };
+var CAMS = [ {d:16.5, h:4.4, fov:62}, {d:27, h:7.6, fov:57}, {d:-1.4, h:1.75, fov:70} ];
+function updateCamera(dt){
+  var cfg = CAMS[state.cam];
+  var f = qRot(sim.q,[0,0,1]), up = qRot(sim.q,[0,1,0]);
+  var spd = Math.sqrt(sim.vx*sim.vx+sim.vy*sim.vy+sim.vz*sim.vz);
+  if (cfg.d < 0){
+    cam.px = sim.px + f[0]*1.6 + up[0]*1.55;
+    cam.py = sim.py + f[1]*1.6 + up[1]*1.55;
+    cam.pz = sim.pz + f[2]*1.6 + up[2]*1.55;
+    cam.f = f; cam.up = up;
+  } else {
+    var fh = vnorm([f[0], f[1]*0.42, f[2]]);
+    var dx = sim.px - fh[0]*cfg.d, dy = sim.py - fh[1]*cfg.d + cfg.h, dz = sim.pz - fh[2]*cfg.d;
+    var k = expDamp(5.2, dt);
+    cam.px += (dx-cam.px)*k; cam.py += (dy-cam.py)*k; cam.pz += (dz-cam.pz)*k;
+    var minY = Math.max(heightAt(cam.px, cam.pz), SEA) + 2.6;
+    if (cam.py < minY) cam.py = minY;
+    var look = [sim.px + f[0]*10 - cam.px, sim.py + f[1]*10 + 1.4 - cam.py, sim.pz + f[2]*10 - cam.pz];
+    cam.f = vnorm(look);
+    cam.up = vnorm(vlerp([0,1,0], up, 0.30));
+  }
+  var fovT = cfg.fov + clamp((spd-32)*0.16, 0, 9);
+  state.fov = (state.fov||cfg.fov) + (fovT-(state.fov||cfg.fov))*expDamp(2,dt);
+}
+
+/* ---------------- renderer ---------------- */
+var projM = new Float32Array(16), viewM = new Float32Array(16), vpM = new Float32Array(16);
+var rotM3 = new Float32Array(9), identM3 = new Float32Array([1,0,0, 0,1,0, 0,0,1]);
+var dprCap = 2, fogDen = 0, fogFar = 1;
+
+function resize(){
+  var dpr = Math.min(window.devicePixelRatio||1, dprCap);
+  var w = Math.round(canvas.clientWidth*dpr), h = Math.round(canvas.clientHeight*dpr);
+  if (canvas.width!==w || canvas.height!==h){ canvas.width=w; canvas.height=h; }
+}
+window.addEventListener('resize', resize);
+
+function drawScene(tSec){
+  resize();
+  var w=canvas.width, h=canvas.height, aspect=w/h;
+  gl.viewport(0,0,w,h);
+
+  fogFar = viewChunks*CH_SIZE*0.92;
+  var thin = lerp(1, 0.62, clamp(cam.py/1400, 0, 1));
+  fogDen = 1.35/fogFar*thin;
+
+  var fwd = cam.f || [0,0,1];
+  var side = vnorm(vcross(fwd, cam.up));
+  var up2 = vcross(side, fwd);
+  m4Persp(projM, state.fov*Math.PI/180 || 1.08, aspect, 0.5, fogFar+2600);
+  m4ViewBasis(viewM, fwd, side, up2);
+  m4Mul(vpM, projM, viewM);
+  extractFrustum(vpM);
+
+  var fogCol = pal.hor;
+  gl.clearColor(fogCol[0], fogCol[1], fogCol[2], 1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.disable(gl.BLEND);
+
+  /* --- sky --- */
+  gl.disable(gl.DEPTH_TEST);
+  gl.depthMask(false);
+  gl.useProgram(progSky.p);
+  var th = Math.tan((state.fov*Math.PI/180||1.08)/2);
+  for (var i=0;i<4;i++){
+    var sxq = (i===1||i===2)?1:-1, syq = (i>=2)?1:-1;
+    skyRayArr[i*3]   = fwd[0] + side[0]*sxq*th*aspect + up2[0]*syq*th;
+    skyRayArr[i*3+1] = fwd[1] + side[1]*sxq*th*aspect + up2[1]*syq*th;
+    skyRayArr[i*3+2] = fwd[2] + side[2]*sxq*th*aspect + up2[2]*syq*th;
+  }
+  setAttribs([progSky.a.aPos, progSky.a.aRay]);
+  gl.bindBuffer(gl.ARRAY_BUFFER, skyPosBuf);
+  gl.vertexAttribPointer(progSky.a.aPos, 2, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, skyRayBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, skyRayArr, gl.DYNAMIC_DRAW);
+  gl.vertexAttribPointer(progSky.a.aRay, 3, gl.FLOAT, false, 0, 0);
+  gl.uniform3fv(progSky.u.uZen, pal.zen);
+  gl.uniform3fv(progSky.u.uHor, pal.hor);
+  gl.uniform3fv(progSky.u.uSunDir, pal.sunDir);
+  gl.uniform3fv(progSky.u.uSunCol, pal.sun);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, skyIdx);
+  gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+  /* --- terrain --- */
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthMask(true);
+  gl.enable(gl.CULL_FACE);
+  gl.useProgram(progMain.p);
+  gl.uniformMatrix4fv(progMain.u.uVP, false, vpM);
+  gl.uniformMatrix3fv(progMain.u.uRot, false, identM3);
+  gl.uniform3fv(progMain.u.uSunDir, pal.sunDir);
+  gl.uniform3fv(progMain.u.uSunCol, pal.lig);
+  gl.uniform3fv(progMain.u.uAmbSky, pal.ambS);
+  gl.uniform3fv(progMain.u.uAmbGnd, pal.ambG);
+  gl.uniform3fv(progMain.u.uFogCol, fogCol);
+  gl.uniform1f(progMain.u.uFogDen, fogDen);
+  gl.uniform1f(progMain.u.uCamY, cam.py);
+  gl.uniform1f(progMain.u.uHazeH, 60);
+  setAttribs([progMain.a.aPos, progMain.a.aNrm, progMain.a.aCol]);
+  var chRad = CH_SIZE*0.75+380;
+  chunks.forEach(function(ch){
+    var ox = ch.x0-cam.px, oz = ch.z0-cam.pz;
+    if (!sphereVisible(ox+CH_SIZE/2, 240-cam.py, oz+CH_SIZE/2, chRad)) return;
+    gl.uniform3f(progMain.u.uOff, ox, -cam.py, oz);
+    bindMain(ch.vbo);
+    gl.drawArrays(gl.TRIANGLES, 0, ch.count);
+  });
+
+  /* --- aircraft --- */
+  if (state.cam!==2 || state.mode==='menu'){
+    qToM3(sim.q, rotM3);
+    gl.uniformMatrix3fv(progMain.u.uRot, false, rotM3);
+    gl.uniform3f(progMain.u.uOff, sim.px-cam.px, sim.py-cam.py, sim.pz-cam.pz);
+    bindMain(planeMesh.vbo);
+    gl.drawArrays(gl.TRIANGLES, 0, planeMesh.count);
+
+    var pp = qRot(sim.q, PROP_POS);
+    var spin = qMul(sim.q, qAxisAngle([0,0,1], state.propAng||0));
+    qToM3(spin, rotM3);
+    gl.uniformMatrix3fv(progMain.u.uRot, false, rotM3);
+    gl.uniform3f(progMain.u.uOff, sim.px+pp[0]-cam.px, sim.py+pp[1]-cam.py, sim.pz+pp[2]-cam.pz);
+    bindMain(propMesh.vbo);
+    gl.drawArrays(gl.TRIANGLES, 0, propMesh.count);
+
+    if (sim.throttle>0.12){
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      bindMain(discMesh.vbo);
+      gl.drawArrays(gl.TRIANGLES, 0, discMesh.count);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+    }
+  }
+
+  /* --- water --- */
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.disable(gl.CULL_FACE);
+  gl.useProgram(progWater.p);
+  gl.uniformMatrix4fv(progWater.u.uVP, false, vpM);
+  gl.uniform3f(progWater.u.uCam, cam.px, cam.py, cam.pz);
+  gl.uniform3fv(progWater.u.uDeep, pal.deep);
+  gl.uniform3fv(progWater.u.uHor, pal.hor);
+  gl.uniform3fv(progWater.u.uSunDir, pal.sunDir);
+  gl.uniform3fv(progWater.u.uSunCol, pal.sun);
+  gl.uniform3fv(progWater.u.uFogCol, fogCol);
+  gl.uniform1f(progWater.u.uFogDen, fogDen);
+  gl.uniform1f(progWater.u.uT, tSec);
+  setAttribs([progWater.a.aPos]);
+  gl.bindBuffer(gl.ARRAY_BUFFER, waterBuf);
+  gl.vertexAttribPointer(progWater.a.aPos, 2, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, skyIdx);
+  gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+  /* --- shadow + clouds --- */
+  gl.useProgram(progCloud.p);
+  gl.depthMask(false);
+  gl.uniformMatrix4fv(progCloud.u.uVP, false, vpM);
+  gl.uniform1f(progCloud.u.uFogDen, fogDen);
+  gl.uniform3fv(progCloud.u.uFogCol, fogCol);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, cloudTex);
+  gl.uniform1i(progCloud.u.uTex, 0);
+
+  /* ground shadow blob */
+  var gY = Math.max(heightAt(sim.px, sim.pz), SEA);
+  var altAbove = sim.py-gY;
+  if (altAbove < 160){
+    var sAlpha = clamp(1-altAbove/150, 0, 1)*0.34;
+    var sSize = 7 + altAbove*0.1;
+    fillPuff(0, sim.px-cam.px, gY+0.6-cam.py, sim.pz-cam.pz, sSize, sAlpha);
+    gl.uniform3f(progCloud.u.uRight, 1,0,0);
+    gl.uniform3f(progCloud.u.uUp, 0,0,1);
+    gl.uniform3f(progCloud.u.uLit, 0.05,0.08,0.12);
+    gl.uniform3f(progCloud.u.uShade, 0.05,0.08,0.12);
+    uploadPuffs(1);
+    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+  }
+
+  /* clouds */
+  var order = [];
+  for (var c2=0;c2<clouds.length;c2++){
+    var cl2=clouds[c2];
+    var rx=cl2.x-cam.px, ry=cl2.y-cam.py, rz=cl2.z-cam.pz;
+    var d2 = rx*rx+ry*ry+rz*rz;
+    if (d2 < (fogFar+900)*(fogFar+900)) order.push([d2, cl2, rx, ry, rz]);
+  }
+  order.sort(function(a,b){ return b[0]-a[0]; });
+  var np=0;
+  for (var oi=0;oi<order.length && np<MAX_PUFFS;oi++){
+    var oc = order[oi], cl3=oc[1];
+    var camDist = Math.sqrt(oc[0]);
+    var nearFade = clamp((camDist-cl3.scale*0.5)/120, 0, 1);
+    for (var pi=0;pi<cl3.puffs.length && np<MAX_PUFFS;pi++){
+      var pf = cl3.puffs[pi];
+      fillPuff(np++, oc[2]+pf.dx, oc[3]+pf.dy, oc[4]+pf.dz, pf.s, 0.85*cl3.fade*nearFade);
+    }
+  }
+  gl.uniform3fv(progCloud.u.uRight, side);
+  gl.uniform3fv(progCloud.u.uUp, up2);
+  gl.uniform3fv(progCloud.u.uLit, pal.cLit);
+  gl.uniform3fv(progCloud.u.uShade, pal.cSh);
+  uploadPuffs(np);
+  gl.drawElements(gl.TRIANGLES, np*6, gl.UNSIGNED_SHORT, 0);
+
+  gl.depthMask(true);
+  gl.enable(gl.CULL_FACE);
+  gl.disable(gl.BLEND);
+}
+function fillPuff(i, x, y, z, size, alpha){
+  var o=i*32;
+  for (var k=0;k<4;k++){
+    var cx=(k===1||k===2)?1:-1, cy=(k>=2)?1:-1;
+    var b=o+k*8;
+    cloudArr[b]=x; cloudArr[b+1]=y; cloudArr[b+2]=z;
+    cloudArr[b+3]=cx*size; cloudArr[b+4]=cy*size;
+    cloudArr[b+5]=cx*0.5+0.5; cloudArr[b+6]=0.5-cy*0.5;
+    cloudArr[b+7]=alpha;
+  }
+}
+function uploadPuffs(n){
+  setAttribs([progCloud.a.aCtr, progCloud.a.aCrn, progCloud.a.aUV, progCloud.a.aFade]);
+  gl.bindBuffer(gl.ARRAY_BUFFER, cloudBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, cloudArr.subarray(0,n*32), gl.DYNAMIC_DRAW);
+  gl.vertexAttribPointer(progCloud.a.aCtr, 3, gl.FLOAT, false, 32, 0);
+  gl.vertexAttribPointer(progCloud.a.aCrn, 2, gl.FLOAT, false, 32, 12);
+  gl.vertexAttribPointer(progCloud.a.aUV, 2, gl.FLOAT, false, 32, 20);
+  gl.vertexAttribPointer(progCloud.a.aFade, 1, gl.FLOAT, false, 32, 28);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cloudIdx);
+}
+
+/* ---------------- HUD ---------------- */
+var CARD = ['N','NE','E','SE','S','SW','W','NW'];
+var hudT = 0;
+function updateHUD(t){
+  if (t-hudT < 0.12) return;
+  hudT = t;
+  var spd = Math.sqrt(sim.vx*sim.vx+sim.vy*sim.vy+sim.vz*sim.vz);
+  var f = qRot(sim.q,[0,0,1]);
+  var deg = (Math.atan2(f[0],f[2])*180/Math.PI+360)%360;
+  $('stAlt').textContent = Math.round(sim.py)+' m';
+  $('stSpd').textContent = Math.round(spd*3.6)+' km/h';
+  $('stHdg').textContent = CARD[Math.round(deg/45)%8]+' '+Math.round(deg)+'°';
+  elThrFill.style.height = (sim.throttle*100).toFixed(1)+'%';
+  elThrPct.textContent = Math.round(throttleTarget*100);
+  if (state.msgT && t-state.msgT>3.4){ $('toast').style.opacity=0; state.msgT=0; }
+}
+
+/* ---------------- cloud simulation + events ---------------- */
+function updateClouds(dt){
+  var hx = sim.vx, hz = sim.vz;
+  var inside = false;
+  for (var i=0;i<clouds.length;i++){
+    var cl = clouds[i];
+    cl.x += P.windX*dt*1.6; cl.z += P.windZ*dt*1.6;
+    cl.fade = Math.min(1, cl.fade + dt*0.25);
+    var dx=cl.x-sim.px, dy=cl.y-sim.py, dz=cl.z-sim.pz;
+    var d2=dx*dx+dz*dz;
+    if (d2 > 4300*4300) spawnCloud(cl, sim.px, sim.pz, true, hx, hz);
+    else if (d2 < cl.scale*cl.scale*1.1 && dy*dy < cl.scale*cl.scale*0.16) inside = true;
+  }
+  var t = performanceNow01();
+  state.inCloudT += ((inside?1:0) - state.inCloudT)*expDamp(3,dt);
+  $('cloudflash').style.opacity = (state.inCloudT*0.13).toFixed(3);
+  sim.turb = state.inCloudT*0.5;
+  if (inside && t-state.lastChime > 9 && state.mode==='flying'){
+    state.lastChime = t;
+    if (audio && prefs.sound) audio.sfx.chime();
+  }
+}
+
+/* ---------------- crash / bounce handling ---------------- */
+function handleImpacts(){
+  if (sim.bounced){
+    if (audio && prefs.sound){ if (sim.bounced===2) audio.sfx.splash(); else audio.sfx.thud(false); }
+    sim.bounced = 0;
+  }
+  if (sim.crashed){
+    var overWater = sim.crashed===2;
+    if (audio && prefs.sound){ if (overWater) audio.sfx.splash(); else audio.sfx.thud(true); }
+    var cf = $('crashflash');
+    cf.style.transition='none'; cf.style.opacity=0.9;
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      cf.style.transition='opacity 1.6s ease'; cf.style.opacity=0;
+    });});
+    var f = qRot(sim.q,[0,0,1]);
+    var heading = Math.atan2(f[0],f[2]);
+    var ns = freshState(sim.px, sim.pz, heading);
+    ns.throttle = Math.max(sim.throttle, 0.55);
+    ns.py = Math.max(heightAt(sim.px, sim.pz),
+                     heightAt(sim.px+f[0]*500, sim.pz+f[2]*500), SEA) + 260;
+    sim = ns;
+    if (state.mode!=='menu')
+      toast(overWater ? 'scooped up by a friendly wave ༄' : 'a kind updraft sets you back aloft ༄');
+  }
+}
+
+/* ---------------- adaptive quality ---------------- */
+var frameEMA = 16, qCheckT = 0;
+function adaptQuality(dt, t){
+  frameEMA = frameEMA*0.96 + dt*1000*0.04;
+  if (t-qCheckT < 4) return;
+  if (frameEMA > 27 && state.quality < 4){
+    qCheckT = t; state.quality++;
+    if (state.quality===1) dprCap = 1.6;
+    else if (state.quality===2) dprCap = 1.3;
+    else if (state.quality===3) { viewChunks = 3.7; }
+    else { dprCap = 1.0; viewChunks = 3.2; }
+    resize();
+  }
+}
+
+/* ---------------- main loop ---------------- */
+var lastT = 0, booted = false, palForce = null;
+function frame(ms){
+  requestAnimationFrame(frame);
+  var t = ms/1000;
+  var dt = Math.min(t-lastT || 0.016, 0.05);
+  lastT = t;
+  if (dt<=0) dt=0.001;
+
+  try {
+    if (state.mode!=='paused'){
+      if (state.mode==='menu') autopilot(sim, dt, t);
+      else gatherInput(dt, sim);
+
+      var sub = dt>0.028 ? 2 : 1;
+      for (var s=0;s<sub;s++) physStep(sim, input, dt/sub);
+      handleImpacts();
+
+      var spd = Math.sqrt(sim.vx*sim.vx+sim.vy*sim.vy+sim.vz*sim.vz);
+      state.propAng = (state.propAng||0) + dt*(8+sim.throttle*46);
+
+      updatePalette(palForce!==null ? palForce : t);
+      updateCamera(dt);
+      updateChunks(sim.px, sim.pz, booted ? 3 : 200);
+      booted = true;
+      updateClouds(dt);
+      updateHUD(t);
+
+      if (audio){
+        audio.updateEngine(sim.throttle, spd, dt, state.mode==='flying');
+        if (prefs.music && prefs.sound) audio.scheduleWindow(audio.ctx.currentTime+0.4);
+        if (state.mode==='flying' && sim.stall>0.6 && t-state.lastBeep>2.1 && prefs.sound){
+          state.lastBeep = t; audio.sfx.beep();
+        }
+      }
+      adaptQuality(dt, t);
+    }
+    drawScene(t);
+  } catch(err){
+    ERRORS.push(String(err && err.stack || err));
+    if (ERRORS.length < 3) console.error(err);
+  }
+
+  DEBUG.frames++; DEBUG.lastDt = dt;
+}
+
+/* ---------------- debug hooks (for automated testing) ---------------- */
+var DEBUG = { frames:0, lastDt:0 };
+window.__sim = {
+  errors: ERRORS,
+  state: function(){
+    var spd = Math.sqrt(sim.vx*sim.vx+sim.vy*sim.vy+sim.vz*sim.vz);
+    return {
+      mode: state.mode, x:sim.px, y:sim.py, z:sim.pz, speed:spd,
+      vy:sim.vy, throttle:sim.throttle, stall:sim.stall, alpha:sim.alpha,
+      chunks: chunks.size, frames: DEBUG.frames, fogFar: fogFar,
+      quality: state.quality, frameEMA: frameEMA,
+      inPitch: input.pitch, inRoll: input.roll,
+      audio: audio ? audio.ctx.state : 'none',
+      nan: !(isFinite(sim.px)&&isFinite(sim.py)&&isFinite(sim.pz)&&isFinite(spd))
+    };
+  },
+  simulate: function(seconds, inp){
+    var st = freshState(5000, 5000, 0.3);
+    if (inp && inp.throttle!==undefined) st.throttle = inp.throttle;
+    var io = { roll:(inp&&inp.roll)||0, pitch:(inp&&inp.pitch)||0, yaw:(inp&&inp.yaw)||0,
+               assist: !inp || inp.assist!==false };
+    var minAlt=1e9, maxAlt=-1e9, crashed=false;
+    var h0 = Math.atan2(qRot(st.q,[0,0,1])[0], qRot(st.q,[0,0,1])[2]);
+    for (var i=0;i<seconds*60;i++){
+      physStep(st, io, 1/60);
+      if (st.crashed){ crashed=true; break; }
+      minAlt=Math.min(minAlt, st.py); maxAlt=Math.max(maxAlt, st.py);
+    }
+    var f=qRot(st.q,[0,0,1]);
+    var spd=Math.sqrt(st.vx*st.vx+st.vy*st.vy+st.vz*st.vz);
+    return { speed:spd, vy:st.vy, alt:st.py, minAlt:minAlt, maxAlt:maxAlt,
+      headingDelta:((Math.atan2(f[0],f[2])-h0)*180/Math.PI+540)%360-180,
+      crashed:crashed, nan:!(isFinite(st.px)&&isFinite(st.py)&&isFinite(spd)) };
+  },
+  audioTest: function(){
+    return new Promise(function(res, rej){
+      try {
+        var OAC = window.OfflineAudioContext||window.webkitOfflineAudioContext;
+        var oc = new OAC(2, 44100*5, 44100);
+        var a = createAudio(oc, 777);
+        a.startMusic(0.05);
+        a.scheduleWindow(5);
+        a.updateEngine(0.7, 40, 1, true);
+        oc.startRendering().then(function(buf){
+          var d = buf.getChannelData(0), sum=0, peak=0;
+          for (var i=0;i<d.length;i++){ sum+=d[i]*d[i]; peak=Math.max(peak,Math.abs(d[i])); }
+          res({ rms: Math.sqrt(sum/d.length), peak: peak });
+        }).catch(rej);
+      } catch(e){ rej(e); }
+    });
+  },
+  press: function(code, down){ keys[code] = !!down; },
+  start: function(){ closeOverlay(); },
+  setThrottle: function(v){ throttleTarget = clamp(v,0,1); },
+  lockQuality: function(){ dprCap = 2; viewChunks = 4.3; state.quality = 99; resize(); },
+  heightAt: heightAt,
+  setTime: function(s){ palForce = s; },
+  teleport: function(x, z, alt, heading){
+    sim = freshState(x, z, heading||0);
+    if (alt!==undefined) sim.py = alt;
+    cam.px = sim.px - Math.sin(heading||0)*20;
+    cam.pz = sim.pz - Math.cos(heading||0)*20;
+    cam.py = sim.py + 6;
+    booted = false;
+  }
+};
+
+/* ---------------- boot ---------------- */
+updatePalette(0);
+resize();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
