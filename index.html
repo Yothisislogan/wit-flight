@@ -1199,7 +1199,7 @@ function acById(id){
 
 /* ---------------- flight physics ---------------- */
 var P = {
-  g:9.81, kLvl:1.35, kPitStab:2.1, kYawStab:1.5, aTrim:0.035,
+  g:9.81, kLvl:1.35, kPitStab:2.1, kYawStab:1.85, aTrim:0.035,
   windX:1.8, windZ:-1.1
 };
 function freshState(x, z, heading, ac){
@@ -1256,7 +1256,7 @@ function physStep(st, inp, dt, ac){
   st.vx += ax*dt; st.vy += ay*dt; st.vz += az*dt;
   st.px += st.vx*dt; st.py += st.vy*dt; st.pz += st.vz*dt;
 
-  var eff = clamp(spd/26, 0.12, 1.18);
+  var eff = clamp(spd/22, 0.15, 1.18);
   var wxT, wzT, wyT = inp.yaw*AP.yawMax*eff;
   if (inp.assist){
     /* stick x commands a bank angle (max ~57°); turns stay coordinated.
@@ -1265,7 +1265,7 @@ function physStep(st, inp, dt, ac){
     var fullP = smoothstep(0.90, 0.99, Math.abs(inp.pitch));
     var bank = Math.atan2(-rt[1], Math.max(up[1], 0.05));
     var bankT = clamp(inp.roll, -1, 1)*1.0;
-    var wzBank = clamp(-(bankT-bank)*2.6, -AP.rollMax, AP.rollMax);
+    var wzBank = clamp(-(bankT-bank)*1.9, -AP.rollMax*0.78, AP.rollMax*0.78);
     wzT = (wzBank*(1-fullR) - inp.roll*AP.rollMax*fullR)*eff;
     /* stick y commands pitch rate, softened near vertical attitudes */
     var pc = inp.pitch;
@@ -1282,14 +1282,15 @@ function physStep(st, inp, dt, ac){
   wxT += (alpha - P.aTrim)*P.kPitStab*eff*(inp.assist ? 1-aerob*0.7 : 0.5);
   wyT += beta*P.kYawStab*eff;
   if (st.onGround){
-    /* wheels down: steer with rudder, keep level, elevator still rotates */
+    /* wheels down: steer with rudder, keep level; any real pull frees the nose to rotate */
     wyT = inp.yaw*clamp(1.5 - spd*0.025, 0.3, 1.5);
     wzT = -rt[1]*5.0;
-    wxT = -inp.pitch*AP.pitchMax*eff*0.8 + clamp(fwd[1]-0.012, -0.6, 0.6)*3.0*(1-Math.abs(inp.pitch));
+    var settle = 1 - clamp(Math.abs(inp.pitch)*2.4, 0, 1);
+    wxT = -inp.pitch*AP.pitchMax*eff*1.05 + clamp(fwd[1]-0.012, -0.6, 0.6)*2.2*settle;
   }
   var tn = st.turb||0;
-  wxT += Math.sin(st.px*0.01+performanceNow01()*1.9)*0.012*(1+tn*8);
-  wzT += Math.sin(st.pz*0.013+performanceNow01()*1.4)*0.016*(1+tn*8);
+  wxT += Math.sin(st.px*0.01+performanceNow01()*1.9)*0.008*(1+tn*10);
+  wzT += Math.sin(st.pz*0.013+performanceNow01()*1.4)*0.010*(1+tn*10);
 
   st.wx += (wxT-st.wx)*expDamp(1/AP.tauP,dt);
   st.wy += (wyT-st.wy)*expDamp(1/AP.tauY,dt);
@@ -1336,8 +1337,8 @@ function physStep(st, inp, dt, ac){
         if (!wasGround && st.vy < -0.4) st.landed = impact;
         st.py = gH + 1.45; st.vy = 0;
       }
-      var brake = st.throttle < 0.05 ? 0.42 : 0.035;
-      var gk = Math.min(0.5, dt*(0.16 + brake + spd*0.002));
+      var brake = st.throttle < 0.05 ? 0.42 : 0.03;
+      var gk = Math.min(0.5, dt*(0.10 + brake + spd*0.002));
       st.vx *= 1-gk; st.vz *= 1-gk;
       if (Math.hypot(st.vx, st.vz) < 1.2 && st.throttle < 0.05){ st.vx = 0; st.vz = 0; }
       st.onGround = true;
@@ -2054,14 +2055,14 @@ function gatherInput(dt, st){
   if (keys['KeyS']) throttleTarget=clamp(throttleTarget-dt*0.45,0,1);
 
   var sx = stick.x, sy = stick.y;
-  sx = sx*Math.abs(sx)*0.65 + sx*0.35;
-  sy = sy*Math.abs(sy)*0.65 + sy*0.35;
+  sx = sx*Math.abs(sx)*0.5 + sx*0.5;
+  sy = sy*Math.abs(sy)*0.55 + sy*0.45;
 
   var rawRoll = clamp(sx + kx, -1, 1);
   var rawPitchScreen = clamp(sy + ky, -1, 1);
   var rawPitch = prefs.pull ? rawPitchScreen : -rawPitchScreen;
 
-  input.roll  += (rawRoll  - input.roll )*expDamp(10,dt);
+  input.roll  += (rawRoll  - input.roll )*expDamp(7,dt);
   input.pitch += (rawPitch - input.pitch)*expDamp(10,dt);
   input.yaw   += (clamp(kyaw,-1,1) - input.yaw)*expDamp(6,dt);
   input.assist = prefs.assist;
