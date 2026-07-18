@@ -65,12 +65,55 @@
     font-size:10px; letter-spacing:1.5px; opacity:.55; pointer-events:none; padding:8px 12px; }
 
   #toast { position:fixed; left:50%; bottom:16%; transform:translateX(-50%); padding:9px 18px;
-    font-size:12px; letter-spacing:1px; opacity:0; transition:opacity .6s; pointer-events:none; white-space:nowrap; }
+    font-size:12px; letter-spacing:1px; opacity:0; transition:opacity .6s; pointer-events:none;
+    max-width:88vw; text-align:center; line-height:1.55; z-index:6; }
+
+  /* mission HUD */
+  #obj { position:absolute; top:calc(60px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left));
+    max-width:46vw; padding:8px 14px; font-size:11px; letter-spacing:.5px; line-height:1.5; display:none; pointer-events:none; }
+  #obj .mtitle { font-size:9px; letter-spacing:2px; opacity:.65; }
+  #obj b { color:#ffd9a8; }
+  #nav { position:absolute; bottom:calc(16% + 52px); left:50%; transform:translateX(-50%);
+    padding:6px 14px; font-size:12px; letter-spacing:1px; display:none; pointer-events:none; white-space:nowrap; }
+  #navArr { display:inline-block; transition:transform .2s; font-size:14px; }
+
+  /* career tab */
+  #tabRow { display:flex; gap:8px; }
+  .tab { font-size:11px; letter-spacing:2px; padding:8px 22px; border-radius:20px; cursor:pointer;
+    border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.06); opacity:.55; }
+  .tab.on { opacity:1; background:rgba(255,210,150,.2); border-color:rgba(255,215,160,.6); color:#ffe9c8; }
+  #flyTab { display:flex; flex-direction:column; gap:13px; align-items:center; }
+  #careerTab { display:none; flex-direction:column; gap:11px; align-items:center; width:100%; }
+  #licHead { text-align:center; }
+  #licName { font-size:15px; font-weight:800; letter-spacing:3px; color:#ffe9c8; }
+  #licSub { font-size:9.5px; letter-spacing:1px; opacity:.7; margin-top:3px; }
+  #xpBar { width:min(78vw,300px); height:8px; border-radius:4px; background:rgba(255,255,255,.12); overflow:hidden; }
+  #xpFill { height:100%; width:0%; border-radius:4px; background:linear-gradient(90deg,#f2a56b,#ffdf9e); }
+  #mlist { display:flex; flex-direction:column; gap:6px; width:100%; max-height:38vh; overflow-y:auto; padding:2px; touch-action:pan-y; }
+  .mrow { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:12px; cursor:pointer;
+    border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.05); text-align:left; }
+  .mrow:hover { background:rgba(255,255,255,.1); }
+  .mrow.locked { opacity:.42; cursor:default; }
+  .mrow.done { border-color:rgba(160,220,160,.4); }
+  .mrow .mi { font-size:15px; width:20px; text-align:center; flex-shrink:0; }
+  .mrow .mn { font-size:11px; font-weight:700; letter-spacing:1px; }
+  .mrow .md { font-size:9px; opacity:.65; line-height:1.45; }
+  .mrow .mx { margin-left:auto; font-size:9.5px; color:#ffd9a8; white-space:nowrap; flex-shrink:0; }
+  #brief { display:none; flex-direction:column; gap:10px; align-items:center; text-align:center; }
+  #briefName { font-size:14px; font-weight:800; letter-spacing:2px; color:#ffe9c8; }
+  #briefTxt { font-size:11px; line-height:1.7; opacity:.9; max-width:320px; }
+  #briefBtns { display:flex; gap:10px; }
+  .bbtn { font:inherit; font-size:11px; letter-spacing:2px; font-weight:700; padding:10px 20px; border-radius:22px; cursor:pointer;
+    border:1px solid rgba(255,235,200,.5); color:#3a2c22; background:linear-gradient(to top,#f2a56b,#ffdf9e); }
+  .bbtn.ghost { background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.3); }
+  .acChip.locked { opacity:.32; }
+  .acChip.locked .tg::after { content:' 🔒'; }
   @media (max-width: 600px){
     #stats { top:calc(60px + env(safe-area-inset-top)); padding:5px 10px; gap:4px; }
     #stats .st { min-width:52px; }
     #stats .vl { font-size:12.5px; }
     #thr { height:min(34vh,210px); }
+    #obj { top:calc(106px + env(safe-area-inset-top)); max-width:64vw; }
   }
 
   /* ---- start / pause overlay ---- */
@@ -128,6 +171,8 @@
   </div>
   <div id="thr" class="glass"><div id="thrFill"></div><div id="thrLab">PWR</div><div id="thrPct">75</div></div>
   <div id="stickHint" class="glass">DRAG HERE TO STEER</div>
+  <div id="obj" class="glass"><div class="mtitle"></div><div class="mtext"></div></div>
+  <div id="nav" class="glass"><span id="navArr">➤</span> <span id="navTxt"></span></div>
 </div>
 <div id="stickRing"></div>
 <div id="stickNub"></div>
@@ -137,20 +182,43 @@
   <div id="panel" class="glass">
     <div id="title">SKYDRIFT</div>
     <div id="subtitle">AN ENDLESS, GENTLE FLIGHT</div>
-    <div id="acLab">AIRCRAFT</div>
-    <div id="acChips"></div>
-    <div id="howto">
-      <b>left of screen</b> — drag to steer<br>
-      pull <b>↓ to climb</b>, push ↑ to dive, ←→ to bank<br>
-      <b>right edge</b> — throttle · hold stick <b>fully over → aerobatics</b>
+    <div id="tabRow">
+      <div class="tab on" id="tabFly">FLY</div>
+      <div class="tab" id="tabCareer">CAREER</div>
     </div>
-    <div id="keysRow">keys · arrows steer · W/S power · A/D rudder<br>C camera · M sound · Esc pause</div>
-    <div id="chips">
-      <div class="chip on" id="chInv">PULL TO CLIMB</div>
-      <div class="chip on" id="chAst">ASSISTS</div>
-      <div class="chip on" id="chMus">MUSIC</div>
+    <div id="flyTab">
+      <div id="acLab">AIRCRAFT</div>
+      <div id="acChips"></div>
+      <div id="howto">
+        <b>left of screen</b> — drag to steer<br>
+        pull <b>↓ to climb</b>, push ↑ to dive, ←→ to bank<br>
+        <b>right edge</b> — throttle · hold stick <b>fully over → aerobatics</b>
+      </div>
+      <div id="keysRow">keys · arrows steer · W/S power · A/D rudder<br>C camera · M sound · Esc pause</div>
+      <div id="chips">
+        <div class="chip on" id="chInv">PULL TO CLIMB</div>
+        <div class="chip on" id="chAst">ASSISTS</div>
+        <div class="chip on" id="chMus">MUSIC</div>
+      </div>
+    </div>
+    <div id="careerTab">
+      <div id="licHead">
+        <div id="licName">STUDENT PILOT</div>
+        <div id="licSub"></div>
+        </div>
+      <div id="xpBar"><div id="xpFill"></div></div>
+      <div id="mlist"></div>
+      <div id="brief">
+        <div id="briefName"></div>
+        <div id="briefTxt"></div>
+        <div id="briefBtns">
+          <button class="bbtn" id="briefGo">BEGIN ✈</button>
+          <button class="bbtn ghost" id="briefBack">BACK</button>
+        </div>
+      </div>
     </div>
     <button id="startBtn">TAKE OFF ✈</button>
+    <button class="bbtn ghost" id="abandonBtn" style="display:none">ABANDON MISSION</button>
     <div id="foot">🎧 HEADPHONES RECOMMENDED</div>
     <div id="errbox"></div>
   </div>
@@ -279,7 +347,7 @@ function ridged(x,z,oct){
 
 /* ---------------- world design ---------------- */
 var SEA = 0.0;
-function heightAt(x,z){
+function rawHeightAt(x,z){
   var c = fbm(x*0.000045+31.7, z*0.000045-11.3, 3);                    // continents
   var m = smoothstep(0.02, 0.60, fbm(x*0.00013-7.1, z*0.00013+3.9, 3)*0.5+0.5); // mountain regions
   var h = c*150 + 46;
@@ -288,6 +356,71 @@ function heightAt(x,z){
   var r = ridged(x*0.00042, z*0.00042, 5);
   h += Math.pow(r, 1.65) * 640 * m * smoothstep(4, 60, h);
   return h;
+}
+
+/* ---------------- airfields ---------------- */
+var AF_CELL = 6500, AF_R = 600, AF_RUN_L = 460, AF_RUN_W = 24;
+var afCache = new Map();
+var AF_A = ['Kes','Blue','Meadow','Fal','Wind','Har','Pine','Gold','Stone','Cloud','Fern','Sil','Bright','Moss','Star','Elder'];
+var AF_B = ['trel','water','lark','con','mere','bor','crest','finch','brook','berry','dale','ver','wing','holm','ling','down'];
+var AF_C = [' Field',' Strip',' Aerodrome',' Landing',' Field',' Airpark',' Meadow',' Field'];
+function airfieldAt(cx, cz){
+  var key = cx+','+cz;
+  if (afCache.has(key)) return afCache.get(key);
+  var af = null;
+  if (hash2(cx*7919+13, cz*6841-71) > 0.40){
+    var ax = (cx + 0.22 + hash2(cx*31+7, cz*17+3)*0.56)*AF_CELL;
+    var az = (cz + 0.22 + hash2(cx*13-5, cz*29+11)*0.56)*AF_CELL;
+    var e = rawHeightAt(ax, az);
+    var ok = e > 7 && e < 300;
+    for (var i=0;i<4 && ok;i++){
+      var aa = i*Math.PI/2;
+      if (Math.abs(rawHeightAt(ax+Math.sin(aa)*250, az+Math.cos(aa)*250) - e) > 95) ok = false;
+    }
+    if (ok){
+      var hh = hash2(cx*101+3, cz*97-9);
+      af = { x:ax, z:az, elev:e, hdg:Math.floor(hh*8)/8*Math.PI, key:key,
+             name: AF_A[(hash2(cx*3+1,cz*5+2)*AF_A.length)|0] +
+                   AF_B[(hash2(cx*7+4,cz*11+6)*AF_B.length)|0] +
+                   AF_C[(hash2(cx*17+9,cz*19+8)*AF_C.length)|0] };
+    }
+  }
+  afCache.set(key, af);
+  return af;
+}
+function heightAt(x,z){
+  var h = rawHeightAt(x,z);
+  var cx = Math.floor(x/AF_CELL), cz = Math.floor(z/AF_CELL);
+  for (var dz=-1;dz<=1;dz++) for (var dx=-1;dx<=1;dx++){
+    var af = airfieldAt(cx+dx, cz+dz);
+    if (!af) continue;
+    var ddx = x-af.x, ddz = z-af.z, d2 = ddx*ddx+ddz*ddz;
+    if (d2 < AF_R*AF_R)
+      h = lerp(h, af.elev, smoothstep(AF_R, AF_R*0.36, Math.sqrt(d2)));
+  }
+  return h;
+}
+function nearestField(x, z, minDist, maxCells){
+  var best = null, bd = 1e18;
+  var cx = Math.floor(x/AF_CELL), cz = Math.floor(z/AF_CELL);
+  var R = maxCells||3;
+  for (var dz=-R;dz<=R;dz++) for (var dx=-R;dx<=R;dx++){
+    var af = airfieldAt(cx+dx, cz+dz);
+    if (!af) continue;
+    var d = Math.hypot(af.x-x, af.z-z);
+    if (d >= (minDist||0) && d < bd){ bd = d; best = af; }
+  }
+  return best;
+}
+var HOME = null;
+(function(){
+  for (var r=0; r<6 && !HOME; r++)
+    for (var cz=-r; cz<=r && !HOME; cz++)
+      for (var cx=-r; cx<=r && !HOME; cx++)
+        if (Math.max(Math.abs(cx),Math.abs(cz))===r) HOME = airfieldAt(cx, cz);
+})();
+function runwayEnd(af, sign){
+  return [af.x + Math.sin(af.hdg)*sign*AF_RUN_L/2, af.z + Math.cos(af.hdg)*sign*AF_RUN_L/2];
 }
 
 var C_SNOW=[244,247,250], C_ROCK1=[146,134,122], C_ROCK2=[172,158,142],
@@ -307,6 +440,17 @@ function terrainColor(h, ny, x, z, rnd){
     var f = fbm(x*0.0021+99, z*0.0021+47, 2);
     if (f > 0.08 && h < 270 && slope < 0.38)
       col = mixc(col, C_FOR, smoothstep(0.08,0.3,f)*0.85);
+  }
+  if (h > 5 && h < 310){
+    var mcx = Math.floor(x/AF_CELL), mcz = Math.floor(z/AF_CELL);
+    for (var mdz=-1;mdz<=1;mdz++) for (var mdx=-1;mdx<=1;mdx++){
+      var maf = airfieldAt(mcx+mdx, mcz+mdz);
+      if (!maf) continue;
+      var mdx2 = x-maf.x, mdz2 = z-maf.z;
+      var md2 = mdx2*mdx2+mdz2*mdz2;
+      if (md2 < 300*300)
+        col = mixc(col, [150,186,104], smoothstep(300, 180, Math.sqrt(md2))*0.6);
+    }
   }
   var rockT = Math.max(smoothstep(0.30, 0.52, slope), smoothstep(230, 340, h));
   if (rockT > 0) col = mixc(col, mixc(C_ROCK1, C_ROCK2, rnd), rockT);
@@ -570,6 +714,116 @@ function updateChunks(px, pz, budget){
     var kx=ch.x0/CH_SIZE-ccx+0.5, kz=ch.z0/CH_SIZE-ccz+0.5;
     if (kx*kx+kz*kz > kill+2){ vboPool.push(ch.vbo); chunks.delete(key); }
   });
+  return n;
+}
+
+/* ---------------- airfield meshes + forest trees ---------------- */
+var fieldMeshes = new Map();   // af.key -> {vbo,count,x,z}
+function buildFieldMesh(af){
+  var mb = new MeshBuilder(4096);
+  var sn = Math.sin(af.hdg), cn = Math.cos(af.hdg), e = af.elev;
+  function rot(x,y,z){ return [x*cn + z*sn, y, -x*sn + z*cn]; }
+  var ASPH=[74,76,82], LINE=[232,232,226], APRN=[98,100,105], HANG=[178,180,186],
+      ROOF=[196,120,96], POLE=[205,205,205], SOCK=[240,130,60];
+  mb.box(0, e+0.18, 0, AF_RUN_W, 0.36, AF_RUN_L, ASPH, rot);
+  for (var i=-4;i<=4;i++)
+    mb.box(0, e+0.42, i*46, 0.9, 0.08, 20, LINE, rot);
+  for (var k=0;k<6;k++){
+    var tx = -8.5+k*3.4;
+    mb.box(tx, e+0.42, -AF_RUN_L/2+16, 1.5, 0.08, 13, LINE, rot);
+    mb.box(tx, e+0.42,  AF_RUN_L/2-16, 1.5, 0.08, 13, LINE, rot);
+  }
+  mb.box(32, e+0.14, -130, 36, 0.3, 44, APRN, rot);
+  mb.box(40, e+3.1, -130, 15, 6.2, 17, HANG, function(x,y,z){
+    var t = clamp((y-(e+3.6))/2.8, 0, 1);
+    var w = rot(40+(x-40)*(1-t*0.82), y, z);
+    return w;
+  });
+  mb.box(40, e+6.6, -130, 13, 0.5, 17.5, ROOF, function(x,y,z){
+    var w = rot(40+(x-40)*0.36, y, z); return w;
+  });
+  mb.box(18, e+2.7, -108, 0.26, 5.4, 0.26, POLE, rot);
+  mb.box(19.6, e+5.15, -108, 2.6, 0.6, 0.6, SOCK, function(x,y,z){
+    var t = clamp((x-18.3)/2.6, 0, 1);
+    return rot(x, (y-(e+5.15))*(1-t*0.55) + e+5.15 - t*0.3, (z+108)*(1-t*0.55) - 108);
+  });
+  var m = mb.upload();
+  m.x = af.x; m.z = af.z; m.elev = af.elev;
+  return m;
+}
+function updateFieldMeshes(px, pz){
+  var cx = Math.floor(px/AF_CELL), cz = Math.floor(pz/AF_CELL);
+  for (var dz=-1;dz<=1;dz++) for (var dx=-1;dx<=1;dx++){
+    var af = airfieldAt(cx+dx, cz+dz);
+    if (!af) continue;
+    var d = Math.hypot(af.x-px, af.z-pz);
+    if (d < 7000 && !fieldMeshes.has(af.key))
+      fieldMeshes.set(af.key, buildFieldMesh(af));
+  }
+  fieldMeshes.forEach(function(m, key){
+    if (Math.hypot(m.x-px, m.z-pz) > 9000){ gl.deleteBuffer(m.vbo); fieldMeshes.delete(key); }
+  });
+}
+
+var treeChunks = new Map();   // "cx,cz" -> {vbo,count,x0,z0} | null (barren)
+var TREE_R = 1500;
+function mbCone(mb, cx, cy, cz, r, hh, col){
+  var a0, a1, i;
+  for (i=0;i<4;i++){
+    a0 = i*Math.PI/2 + 0.4; a1 = a0 + Math.PI/2;
+    mb.tri([cx, cy+hh, cz],
+           [cx+Math.cos(a1)*r, cy, cz+Math.sin(a1)*r],
+           [cx+Math.cos(a0)*r, cy, cz+Math.sin(a0)*r], col);
+  }
+}
+function buildTreeChunk(ccx, ccz){
+  var x0 = ccx*CH_SIZE, z0 = ccz*CH_SIZE;
+  var mb = chunkBuilder; mb.n = 0;
+  var n = 0;
+  for (var j=0;j<20 && mb.n < CH_VERTS-40;j++) for (var i=0;i<20 && mb.n < CH_VERTS-40;i++){
+    var wx = x0 + i*32 + hash2(x0+i*7, z0+j*13)*24;
+    var wz = z0 + j*32 + hash2(x0+i*11+5, z0+j*3+9)*24;
+    var f = fbm(wx*0.0021+99, wz*0.0021+47, 2);
+    if (f < 0.12) continue;
+    if (hash2(wx|0, wz|0) < 0.26) continue;
+    var h = heightAt(wx, wz);
+    if (h < 8 || h > 250) continue;
+    if (Math.abs(heightAt(wx+14, wz) - h) > 5) continue;
+    var nf = nearestField(wx, wz, 0, 1);
+    if (nf && Math.hypot(nf.x-wx, nf.z-wz) < 330) continue;
+    var s = 0.75 + hash2(wx*3|0, wz*5|0)*0.6;
+    var g = 0.82 + hash2(wx*9|0, wz*2|0)*0.36;
+    var lx = wx-x0, lz = wz-z0;
+    var GRN = [58*g, 106*g, 62*g], GRN2 = [64*g, 118*g, 70*g];
+    mbCone(mb, lx, h-0.4, lz, 0.5*s, 2.2*s, [96,72,52]);
+    mbCone(mb, lx, h+1.2*s, lz, 2.6*s, 4.2*s, GRN);
+    mbCone(mb, lx, h+3.6*s, lz, 1.9*s, 3.4*s, GRN2);
+    n++;
+  }
+  if (!n) return null;
+  var vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, mb.u8.subarray(0, mb.n*STRIDE), gl.STATIC_DRAW);
+  return {vbo:vbo, count:mb.n, x0:x0, z0:z0};
+}
+function updateTrees(px, pz){
+  var ccx = Math.floor(px/CH_SIZE), ccz = Math.floor(pz/CH_SIZE);
+  var R = Math.ceil(TREE_R/CH_SIZE), built = 0;
+  for (var dz=-R;dz<=R;dz++) for (var dx=-R;dx<=R;dx++){
+    var key = (ccx+dx)+','+(ccz+dz);
+    if (!treeChunks.has(key) && built < 1){
+      treeChunks.set(key, buildTreeChunk(ccx+dx, ccz+dz));
+      built++;
+    }
+  }
+  treeChunks.forEach(function(tc, key){
+    if (!tc) return;
+    if (Math.hypot(tc.x0+320-px, tc.z0+320-pz) > TREE_R+1600){
+      gl.deleteBuffer(tc.vbo); treeChunks.delete(key);
+    }
+  });
+  if (treeChunks.size > 120)
+    treeChunks.forEach(function(tc, key){ if (!tc) treeChunks.delete(key); });
 }
 
 /* frustum culling */
@@ -717,8 +971,9 @@ var cloudArr = new Float32Array(MAX_PUFFS*4*8);
 var cloudBuf = gl.createBuffer();
 var cloudIdx = gl.createBuffer();
 (function(){
-  var idx = new Uint16Array(MAX_PUFFS*6);
-  for (var i=0;i<MAX_PUFFS;i++){
+  var IDXQ = 256;   // covers cloud puffs, shadows, and the 240 rain streaks
+  var idx = new Uint16Array(IDXQ*6);
+  for (var i=0;i<IDXQ;i++){
     var b=i*4, o=i*6;
     idx[o]=b; idx[o+1]=b+1; idx[o+2]=b+2; idx[o+3]=b; idx[o+4]=b+2; idx[o+5]=b+3;
   }
@@ -1026,6 +1281,12 @@ function physStep(st, inp, dt, ac){
   var aerob = inp.assist ? Math.max(smoothstep(0.88,0.985,Math.abs(inp.roll)), smoothstep(0.9,0.99,Math.abs(inp.pitch))) : 0.5;
   wxT += (alpha - P.aTrim)*P.kPitStab*eff*(inp.assist ? 1-aerob*0.7 : 0.5);
   wyT += beta*P.kYawStab*eff;
+  if (st.onGround){
+    /* wheels down: steer with rudder, keep level, elevator still rotates */
+    wyT = inp.yaw*clamp(1.5 - spd*0.025, 0.3, 1.5);
+    wzT = -rt[1]*5.0;
+    wxT = -inp.pitch*AP.pitchMax*eff*0.8 + clamp(fwd[1]-0.012, -0.6, 0.6)*3.0*(1-Math.abs(inp.pitch));
+  }
   var tn = st.turb||0;
   wxT += Math.sin(st.px*0.01+performanceNow01()*1.9)*0.012*(1+tn*8);
   wzT += Math.sin(st.pz*0.013+performanceNow01()*1.4)*0.016*(1+tn*8);
@@ -1041,29 +1302,65 @@ function physStep(st, inp, dt, ac){
   var gTerr = heightAt(st.px, st.pz);
   var overWater = gTerr < SEA;
   var gH = Math.max(gTerr, SEA);
+  var wasGround = st.onGround, wasWater = st.onWater;
   st.onGround = false; st.onWater = false;
   if (AP.floats && overWater && st.py < gH + 2.2){
     /* floatplane alights on water */
     if (-st.vy > 8 || up[1] < 0.5){
       st.crashed = 2;
     } else {
-      if (st.py < gH + 1.7){ st.py = gH + 1.7; if (st.vy < 0) st.vy = -st.vy*0.1; }
+      if (!wasWater && st.vy < -0.4) st.landed = -st.vy;
+      if (st.py < gH + 1.7){
+        st.py = gH + 1.7; if (st.vy < 0) st.vy = -st.vy*0.1;
+      }
       var wk = Math.min(0.4, dt*(0.10 + spd*0.004));
       st.vx *= 1-wk; st.vz *= 1-wk;
       st.onWater = true;
     }
   } else if (st.py - gH < 2.2){
     var impact = -st.vy;
-    if (impact > 11 || st.stall > 0.85 && impact > 6){
+    /* is the ground ahead flat enough to roll on? */
+    var hs = spd > 2 ? 1/Math.max(Math.sqrt(st.vx*st.vx+st.vz*st.vz),0.1) : 0;
+    var ddx = spd > 2 ? st.vx*hs : fwd[0], ddz = spd > 2 ? st.vz*hs : fwd[2];
+    var flat = !overWater &&
+      Math.abs(heightAt(st.px+ddx*16, st.pz+ddz*16) - gTerr) < 2.4 &&
+      Math.abs(heightAt(st.px+rt[0]*9, st.pz+rt[2]*9) - gTerr) < 2.4;
+    if (impact > 9 || st.stall > 0.85 && impact > 6 || (!flat && impact > 6)){
       st.crashed = overWater ? 2 : 1;
+    } else if (flat && up[1] > 0.8){
+      /* wheels on the ground: touchdown + rollout */
+      if (st.py < gH + 1.45){
+        st.py = gH + 1.45;
+        if (st.vy < 0){ if (!wasGround && st.vy < -0.4) st.landed = impact; st.vy = 0; }
+      } else if (st.vy < 0){
+        if (!wasGround && st.vy < -0.4) st.landed = impact;
+        st.py = gH + 1.45; st.vy = 0;
+      }
+      var brake = st.throttle < 0.05 ? 0.42 : 0.035;
+      var gk = Math.min(0.5, dt*(0.16 + brake + spd*0.002));
+      st.vx *= 1-gk; st.vz *= 1-gk;
+      if (Math.hypot(st.vx, st.vz) < 1.2 && st.throttle < 0.05){ st.vx = 0; st.vz = 0; }
+      st.onGround = true;
     } else {
+      /* rough-terrain brush: forgiving skim */
       st.py = gH + 2.2;
       if (st.vy < 0) st.vy = -st.vy*0.32 + 1.2;
-      st.vx *= 0.985; st.vz *= 0.985;
-      st.onGround = true;
+      var sk = 1 - Math.min(0.35, dt*0.5);
+      st.vx *= sk; st.vz *= sk;
       st.bounced = overWater ? 2 : 1;
     }
   }
+  return st;
+}
+function parkedState(af, ac){
+  var st = freshState(0, 0, 0, ac);
+  var end = runwayEnd(af, -1);
+  var dirx = Math.sin(af.hdg), dirz = Math.cos(af.hdg);
+  st.px = end[0] + dirx*36; st.pz = end[1] + dirz*36;
+  st.py = af.elev + 1.45;
+  st.vx = 0; st.vy = 0; st.vz = 0;
+  st.q = qAxisAngle([0,1,0], af.hdg);
+  st.throttle = 0; st.onGround = true;
   return st;
 }
 var _pn0 = (typeof performance!=='undefined') ? performance.now() : 0;
@@ -1394,6 +1691,14 @@ function createAudio(actx, seed){
   function click(){
     note('square', 96, actx.currentTime, 0.05, 0.03, sfxBus);
   }
+  function fanfare(){
+    var t = actx.currentTime;
+    [72,76,79,84].forEach(function(m,i){
+      note(p25, m, t+i*0.14, 0.5, 0.05, sfxBus);
+      note('triangle', m+12, t+i*0.14+0.05, 0.6, 0.03, sfxBus);
+    });
+    note('triangle', 88, t+0.72, 1.1, 0.045, sfxBus, 0, true);
+  }
 
   return {
     ctx:actx, master:master, musicBus:musicBus,
@@ -1401,7 +1706,7 @@ function createAudio(actx, seed){
     scheduleWindow:scheduleWindow,
     startMusic:startMusic, stopMusic:stopMusic,
     isMusicOn:function(){ return musicOn; },
-    sfx:{chime:chime, beep:beep, thud:thud, splash:splash, click:click}
+    sfx:{chime:chime, beep:beep, thud:thud, splash:splash, click:click, fanfare:fanfare}
   };
 }
 
@@ -1421,6 +1726,245 @@ var prefs = {
   music: loadPref('music', true),
   sound: loadPref('sound', true)
 };
+
+/* ---------------- career & licenses ---------------- */
+var LICENSES = [
+  { name:'STUDENT PILOT',    xp:0,   planes:['cub'] },
+  { name:'PRIVATE PILOT',    xp:100, planes:['cub','glider'] },
+  { name:'COMMERCIAL PILOT', xp:260, planes:['cub','glider','pelican'] },
+  { name:'AEROBATIC RATING', xp:460, planes:['cub','glider','pelican','biplane'] },
+  { name:'JET RATING',       xp:700, planes:['cub','glider','pelican','biplane','swift'] }
+];
+var career = (function(){
+  var c = { xp:0, done:{}, landings:0 };
+  try {
+    var s = JSON.parse(localStorage.getItem('sd_career')||'null');
+    if (s && typeof s.xp==='number'){ c.xp=s.xp; c.done=s.done||{}; c.landings=s.landings|0; }
+  } catch(e){}
+  return c;
+})();
+function saveCareer(){ try { localStorage.setItem('sd_career', JSON.stringify(career)); } catch(e){} }
+function licenseTier(){
+  var t = 0;
+  for (var i=0;i<LICENSES.length;i++) if (career.xp >= LICENSES[i].xp) t = i;
+  return t;
+}
+function planeUnlocked(id){ return LICENSES[licenseTier()].planes.indexOf(id) !== -1; }
+function planeTierName(id){
+  for (var i=0;i<LICENSES.length;i++)
+    if (LICENSES[i].planes.indexOf(id) !== -1) return LICENSES[i].name;
+  return LICENSES[0].name;
+}
+function grantXP(n){
+  var t0 = licenseTier();
+  career.xp += n; saveCareer();
+  if (licenseTier() > t0){
+    toast(LICENSES[licenseTier()].name + ' EARNED ✈ new aircraft unlocked');
+    if (audio && prefs.sound) audio.sfx.fanfare();
+  }
+  if (state.mode === 'flying') paintPlaneLocks();   // full panel rebuild waits for the menu
+  else refreshCareerUI();
+}
+
+/* ---------------- missions ---------------- */
+var MISSIONS = [
+  { id:'first-solo', name:'FIRST SOLO', tier:0, plane:'cub', xp:50,
+    blurb:'Every pilot remembers this one. Take off from {home}, climb 120 m above the field, then bring her back around and land.',
+    objs:[ {t:'takeoff'}, {t:'agl', h:120}, {t:'land', at:'home'} ] },
+  { id:'pattern-work', name:'PATTERN WORK', tier:0, plane:'cub', xp:50,
+    blurb:'Circuits build instinct. Fly two touch-and-gos at {home}: land, lift off, land again.',
+    objs:[ {t:'takeoff'}, {t:'land', at:'home'}, {t:'takeoff'}, {t:'land', at:'home'} ] },
+  { id:'cross-country', name:'CROSS COUNTRY', tier:1, xp:60,
+    blurb:'Your first real trip. Navigate to {dest1} and land — follow the amber arrow and the glowing ring.',
+    objs:[ {t:'takeoff'}, {t:'land', at:'dest1'} ] },
+  { id:'cloud-dancer', name:'CLOUD DANCER', tier:1, xp:40, air:true,
+    blurb:'Pure joy, no paperwork. Brush through three clouds in one flight.',
+    objs:[ {t:'clouds', n:3} ] },
+  { id:'silent-wings', name:'SILENT WINGS', tier:1, plane:'glider', xp:60, air:true,
+    blurb:'The Albatross barely needs her motor. Stay aloft for 2:30 with the throttle below 10%.',
+    objs:[ {t:'quiet', s:150} ] },
+  { id:'mail-run', name:'THE MAIL RUN', tier:2, xp:70,
+    blurb:'Two sacks of letters, two stops. Land at {dest1}, then carry the rest on to {dest2}.',
+    objs:[ {t:'takeoff'}, {t:'land', at:'dest1'}, {t:'takeoff'}, {t:'land', at:'dest2'} ] },
+  { id:'harbor-hop', name:'HARBOR HOP', tier:2, plane:'pelican', xp:70,
+    blurb:"The Pelican's party trick. Alight on open water, then bring her home to {home}.",
+    objs:[ {t:'takeoff'}, {t:'waterland'}, {t:'takeoff'}, {t:'land', at:'home'} ] },
+  { id:'storm-runner', name:'STORM RUNNER', tier:2, xp:60,
+    blurb:"The mail doesn't wait for sunshine. Take off from {home}, circle in the rain, and land back — gently.",
+    weather:[0.95, 0.95],
+    objs:[ {t:'takeoff'}, {t:'agl', h:80}, {t:'land', at:'home'} ] },
+  { id:'checkride-aero', name:'AEROBATIC CHECKRIDE', tier:3, plane:'biplane', xp:80, air:true,
+    blurb:"The examiner is watching from the fence. Above 250 m: one full barrel roll, then one loop.",
+    objs:[ {t:'agl', h:250}, {t:'roll'}, {t:'loop'} ] },
+  { id:'peak-bagger', name:'PEAK BAGGER', tier:3, xp:80, air:true,
+    blurb:"There's a snowcap out there with your name on it. Climb above 700 m and overfly the summit.",
+    objs:[ {t:'alt', h:700}, {t:'reach', at:'peak', r:650} ] },
+  { id:'grand-tour', name:'THE GRAND TOUR', tier:3, xp:80,
+    blurb:'Three fields, one flight: {dest1}, then {dest2}, then home again.',
+    objs:[ {t:'takeoff'}, {t:'land', at:'dest1'}, {t:'takeoff'}, {t:'land', at:'dest2'},
+           {t:'takeoff'}, {t:'land', at:'home'} ] },
+  { id:'sunset-express', name:'SUNSET EXPRESS', tier:4, plane:'swift', xp:100, time:210,
+    blurb:'A jet, a deadline, a far shore. Reach {far} and be on the ground within 3:30.',
+    objs:[ {t:'takeoff'}, {t:'land', at:'far'} ] }
+];
+var mission = null;   // {def, oi, data, ctx, time}
+
+function fieldsSorted(x, z, cells){
+  var out = [];
+  var cx = Math.floor(x/AF_CELL), cz = Math.floor(z/AF_CELL);
+  for (var dz=-cells;dz<=cells;dz++) for (var dx=-cells;dx<=cells;dx++){
+    var af = airfieldAt(cx+dx, cz+dz);
+    if (af) out.push({ af:af, d:Math.hypot(af.x-x, af.z-z) });
+  }
+  out.sort(function(a,b){ return a.d-b.d; });
+  return out;
+}
+var peakMemo = null;
+function findPeak(x, z){
+  if (peakMemo) return peakMemo;
+  var best = null, bh = 400;
+  for (var dz=-15;dz<=15;dz++) for (var dx=-15;dx<=15;dx++){
+    var px = x+dx*1000, pz = z+dz*1000, h = rawHeightAt(px, pz);
+    if (h > bh){ bh = h; best = {x:px, z:pz, elev:h, name:'the summit'}; }
+  }
+  peakMemo = best || {x:x+9000, z:z, elev:600, name:'the high ridge'};
+  return peakMemo;
+}
+function resolveTargets(def){
+  var ctx = { home: HOME };
+  var sorted = fieldsSorted(HOME.x, HOME.z, 3).filter(function(f){ return f.d > 2200; });
+  ctx.dest1 = sorted.length ? sorted[0].af : HOME;
+  ctx.dest2 = sorted.length > 1 ? sorted[1].af : ctx.dest1;
+  var farS = fieldsSorted(HOME.x, HOME.z, 4).filter(function(f){ return f.d > 9000; });
+  ctx.far = farS.length ? farS[0].af : ctx.dest2;
+  if (def.objs.some(function(o){ return o.at==='peak'; })) ctx.peak = findPeak(HOME.x, HOME.z);
+  return ctx;
+}
+function missionBlurb(def, ctx){
+  return def.blurb
+    .replace('{home}', ctx.home.name).replace('{dest1}', ctx.dest1.name)
+    .replace('{dest2}', ctx.dest2.name).replace('{far}', ctx.far.name);
+}
+function startMission(id){
+  var def = null;
+  for (var i=0;i<MISSIONS.length;i++) if (MISSIONS[i].id===id) def = MISSIONS[i];
+  if (!def || !HOME || def.tier > licenseTier()) return false;
+  var ctx = resolveTargets(def);
+  if (def.plane) selectPlane(def.plane, true, true);
+  mission = { def:def, oi:0, data:{}, ctx:ctx, time:0 };
+  if (def.air){
+    sim = freshState(HOME.x, HOME.z, HOME.hdg);
+    sim.py = Math.max(HOME.elev, SEA) + 300;
+  } else {
+    sim = parkedState(HOME, ACTIVE);
+    throttleTarget = 0;
+  }
+  var f = qRot(sim.q, [0,0,1]);
+  cam.px = sim.px - f[0]*22; cam.py = sim.py + 7; cam.pz = sim.pz - f[2]*22;
+  if (def.weather && window.__sim) __sim.setWeather(def.weather[0], def.weather[1]);
+  else weather.force = null;
+  closeOverlay();
+  toast(def.name + ' — good luck ✈');
+  return true;
+}
+function endMission(ok, reason){
+  if (!mission) return;
+  var def = mission.def;
+  if (ok){
+    if (!career.done[def.id]){ career.done[def.id] = true; }
+    saveCareer();
+    toast('MISSION COMPLETE ✦ +' + def.xp + ' XP');
+    grantXP(def.xp);   // license-up toast, if any, wins over the completion toast
+    if (audio && prefs.sound) audio.sfx.fanfare();
+  } else {
+    toast('mission over — ' + reason + ' · try again from the career menu');
+  }
+  weather.force = null;
+  mission = null;
+  refreshCareerUI();
+}
+function missionNavTarget(){
+  if (!mission) return null;
+  var o = mission.def.objs[mission.oi];
+  if (!o || !o.at) return null;
+  return mission.ctx[o.at];
+}
+function objLabel(o, d){
+  switch(o.t){
+    case 'takeoff':   return 'take off';
+    case 'agl':       return 'climb ' + o.h + ' m above the terrain';
+    case 'alt':       return 'climb above ' + o.h + ' m';
+    case 'land':      return 'land at ' + mission.ctx[o.at].name;
+    case 'waterland': return 'alight gently on open water';
+    case 'clouds':    return 'brush ' + o.n + ' clouds · ' + (d.n||0) + '/' + o.n;
+    case 'quiet':     return 'soar quietly · ' + Math.max(0, Math.ceil(o.s-(d.s||0))) + 's to go';
+    case 'roll':      return 'full barrel roll (stick hard over)';
+    case 'loop':      return 'full loop (dive a little, then pull hard)';
+    case 'reach':     return 'overfly the summit';
+  }
+  return '';
+}
+function missionTick(dt){
+  if (!mission || state.mode!=='flying') return;
+  mission.time += dt;
+  var def = mission.def;
+  if (def.time && mission.time > def.time){ endMission(false, 'out of time'); return; }
+  var o = def.objs[mission.oi];
+  if (!o) return;
+  var d = mission.data;
+  var gH = Math.max(heightAt(sim.px, sim.pz), SEA);
+  var agl = sim.py - gH;
+  var spd = Math.sqrt(sim.vx*sim.vx+sim.vy*sim.vy+sim.vz*sim.vz);
+  var done = false;
+  switch(o.t){
+    case 'takeoff':
+      if (sim.onGround || sim.onWater) d.down = true;
+      if (d.down && !sim.onGround && !sim.onWater && agl > 16) done = true;
+      break;
+    case 'agl': if (agl > o.h) done = true; break;
+    case 'alt': if (sim.py > o.h) done = true; break;
+    case 'land': {
+      var f = mission.ctx[o.at];
+      if (sim.onGround && spd < 6 &&
+          (sim.px-f.x)*(sim.px-f.x)+(sim.pz-f.z)*(sim.pz-f.z) < 560*560) done = true;
+      break;
+    }
+    case 'waterland': if (sim.onWater && spd < 9) done = true; break;
+    case 'clouds':
+      if (state.inCloudT > 0.5 && !d.in){ d.in = true; d.n = (d.n||0)+1; }
+      if (state.inCloudT < 0.2) d.in = false;
+      if ((d.n||0) >= o.n) done = true;
+      break;
+    case 'quiet':
+      if (!sim.onGround && !sim.onWater && sim.throttle < 0.10) d.s = (d.s||0) + dt;
+      if ((d.s||0) >= o.s) done = true;
+      break;
+    case 'roll':
+      if (agl > 200){
+        d.a = (d.a||0) + sim.wz*dt;
+        if (Math.abs(sim.wz) < 0.35) d.a *= Math.max(0, 1-dt*0.7);
+        if (Math.abs(d.a) > 6.0) done = true;
+      }
+      break;
+    case 'loop':
+      if (agl > 150){
+        d.a = (d.a||0) + sim.wx*dt;
+        if (Math.abs(sim.wx) < 0.35) d.a *= Math.max(0, 1-dt*0.7);
+        if (Math.abs(d.a) > 6.0) done = true;
+      }
+      break;
+    case 'reach': {
+      var p = mission.ctx.peak;
+      if ((sim.px-p.x)*(sim.px-p.x)+(sim.pz-p.z)*(sim.pz-p.z) < o.r*o.r) done = true;
+      break;
+    }
+  }
+  if (done){
+    mission.oi++; mission.data = {};
+    if (mission.oi >= def.objs.length) endMission(true);
+    else if (audio && prefs.sound) audio.sfx.chime();
+  }
+}
 
 /* ---------------- input ---------------- */
 var input = { roll:0, pitch:0, yaw:0, assist:prefs.assist };
@@ -1493,7 +2037,10 @@ window.addEventListener('keyup', function(e){ keys[e.code]=false; });
 window.addEventListener('wheel', function(e){
   if (state.mode==='flying') throttleTarget = clamp(throttleTarget - Math.sign(e.deltaY)*0.06, 0, 1);
 }, {passive:true});
-document.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
+document.addEventListener('touchmove', function(e){
+  if (e.target && e.target.closest && e.target.closest('#panel')) return;  // menu lists may scroll
+  e.preventDefault();
+}, {passive:false});
 
 function gatherInput(dt, st){
   var kx=0, ky=0, kyaw=0;
@@ -1565,6 +2112,7 @@ function openPause(){
   state.mode='paused';
   $('ov').classList.remove('hidden');
   $('startBtn').textContent='RESUME ✈';
+  $('abandonBtn').style.display = mission ? 'block' : 'none';
   if (audio) audio.ctx.suspend();
 }
 function closeOverlay(){
@@ -1583,6 +2131,11 @@ $('startBtn').addEventListener('click', function(){
   closeOverlay();
 });
 $('pauseBtn').addEventListener('click', openPause);
+$('abandonBtn').addEventListener('click', function(){
+  endMission(false, 'abandoned');
+  $('abandonBtn').style.display = 'none';
+  closeOverlay();
+});
 function bindChip(id, key, cb){
   var el=$(id);
   function paint(){ el.classList.toggle('on', prefs[key]); }
@@ -1593,8 +2146,16 @@ bindChip('chInv','pull');
 bindChip('chAst','assist');
 bindChip('chMus','music', applyAudioPrefs);
 
-/* aircraft picker */
-function selectPlane(id, quiet){
+/* aircraft picker (license-gated) */
+function selectPlane(id, quiet, force){
+  if (!force && !planeUnlocked(id)){
+    toast('🔒 the ' + acById(id).name + ' needs a ' + planeTierName(id) + ' license — fly missions to earn it');
+    return false;
+  }
+  if (!force && mission && mission.def.plane && id !== mission.def.plane){
+    toast('this mission flies the ' + acById(mission.def.plane).name + ' ✈');
+    return false;
+  }
   ACTIVE = acById(id);
   saveStr('plane', ACTIVE.id);
   if (audio) audio.applyProfile(ACTIVE.snd);
@@ -1603,6 +2164,12 @@ function selectPlane(id, quiet){
     chips[i].classList.toggle('on', chips[i].dataset.id===ACTIVE.id);
   if (!quiet && audio) audio.sfx.click();
   if (!quiet && state.mode!=='menu') toast(ACTIVE.name.toLowerCase()+' — '+ACTIVE.tag+' ✈');
+  return true;
+}
+function paintPlaneLocks(){
+  var chips = document.querySelectorAll('.acChip');
+  for (var i=0;i<chips.length;i++)
+    chips[i].classList.toggle('locked', !planeUnlocked(chips[i].dataset.id));
 }
 (function(){
   var row = $('acChips');
@@ -1614,8 +2181,66 @@ function selectPlane(id, quiet){
     el.addEventListener('click', function(){ selectPlane(ac.id); });
     row.appendChild(el);
   });
-  selectPlane(loadStr('plane', 'cub'), true);
+  if (!selectPlane(loadStr('plane', 'cub'), true)) selectPlane('cub', true, true);
 })();
+
+/* ---------------- career UI ---------------- */
+var pendingMission = null;
+function refreshCareerUI(){
+  var tier = licenseTier(), nxt = LICENSES[tier+1];
+  $('licName').textContent = LICENSES[tier].name;
+  $('licSub').textContent = nxt
+    ? career.xp + ' XP · next: ' + nxt.name + ' at ' + nxt.xp + ' XP'
+    : career.xp + ' XP · every rating earned ✦';
+  var lo = LICENSES[tier].xp, hi = nxt ? nxt.xp : career.xp || 1;
+  $('xpFill').style.width = (nxt ? clamp((career.xp-lo)/(hi-lo),0,1)*100 : 100) + '%';
+  var list = $('mlist');
+  list.innerHTML = '';
+  MISSIONS.forEach(function(def){
+    var el = document.createElement('div');
+    var locked = def.tier > tier, done = !!career.done[def.id];
+    el.className = 'mrow' + (locked?' locked':'') + (done?' done':'');
+    var ic = done ? '✅' : locked ? '🔒' : '▶️';
+    var sub = locked ? 'needs ' + LICENSES[def.tier].name
+            : (def.plane ? acById(def.plane).name + ' · ' : '') + (def.time ? '⏱ timed · ' : '') + def.xp + ' XP';
+    el.innerHTML = '<div class="mi">'+ic+'</div><div><div class="mn">'+def.name+'</div>'+
+                   '<div class="md">'+sub+'</div></div>'+
+                   '<div class="mx">'+(done?'flown':'')+'</div>';
+    if (!locked) el.addEventListener('click', function(){ showBriefing(def); });
+    list.appendChild(el);
+  });
+  paintPlaneLocks();
+}
+function showBriefing(def){
+  pendingMission = def;
+  var ctx = resolveTargets(def);
+  $('mlist').style.display = 'none';
+  $('brief').style.display = 'flex';
+  $('briefName').textContent = def.name + ' · ' + def.xp + ' XP';
+  $('briefTxt').textContent = missionBlurb(def, ctx) +
+    (def.plane ? '  Aircraft: ' + acById(def.plane).name + '.' : '') +
+    (def.time ? '  Time limit: ' + Math.floor(def.time/60) + ':' + ('0'+def.time%60).slice(-2) + '.' : '');
+  if (audio) audio.sfx.click();
+}
+function hideBriefing(){
+  pendingMission = null;
+  $('mlist').style.display = 'flex';
+  $('brief').style.display = 'none';
+}
+$('briefBack').addEventListener('click', hideBriefing);
+$('briefGo').addEventListener('click', function(){
+  if (pendingMission){ var m = pendingMission; hideBriefing(); startMission(m.id); }
+});
+function setTab(career){
+  $('tabFly').classList.toggle('on', !career);
+  $('tabCareer').classList.toggle('on', career);
+  $('flyTab').style.display = career ? 'none' : 'flex';
+  $('careerTab').style.display = career ? 'flex' : 'none';
+  if (career){ hideBriefing(); refreshCareerUI(); }
+}
+$('tabFly').addEventListener('click', function(){ setTab(false); });
+$('tabCareer').addEventListener('click', function(){ setTab(true); });
+refreshCareerUI();
 
 function toggleSound(){ prefs.sound=!prefs.sound; savePref('sound',prefs.sound); applyAudioPrefs(); paintBtns(); }
 function toggleMusic(){ prefs.music=!prefs.music; savePref('music',prefs.music); applyAudioPrefs(); paintBtns(); }
@@ -1754,6 +2379,21 @@ function drawScene(tSec){
     bindMain(ch.vbo);
     gl.drawArrays(gl.TRIANGLES, 0, ch.count);
   });
+  treeChunks.forEach(function(tc){
+    if (!tc) return;
+    var ox = tc.x0-cam.px, oz = tc.z0-cam.pz;
+    if (!sphereVisible(ox+CH_SIZE/2, 140-cam.py, oz+CH_SIZE/2, chRad)) return;
+    gl.uniform3f(progMain.u.uOff, ox, -cam.py, oz);
+    bindMain(tc.vbo);
+    gl.drawArrays(gl.TRIANGLES, 0, tc.count);
+  });
+  fieldMeshes.forEach(function(m){
+    var ox = m.x-cam.px, oz = m.z-cam.pz;
+    if (!sphereVisible(ox, m.elev-cam.py, oz, 420)) return;
+    gl.uniform3f(progMain.u.uOff, ox, -cam.py, oz);
+    bindMain(m.vbo);
+    gl.drawArrays(gl.TRIANGLES, 0, m.count);
+  });
 
   /* --- aircraft --- */
   if (state.cam!==2 || state.mode==='menu'){
@@ -1815,17 +2455,40 @@ function drawScene(tSec){
   gl.bindTexture(gl.TEXTURE_2D, cloudTex);
   gl.uniform1i(progCloud.u.uTex, 0);
 
-  /* ground shadow blob */
+  /* ground shadows: plane blob + soft cloud shadows + mission beacon */
   var gY = Math.max(heightAt(sim.px, sim.pz), SEA);
   var altAbove = sim.py-gY;
+  var ns = 0;
   if (altAbove < 160){
     var sAlpha = clamp(1-altAbove/150, 0, 1)*0.34;
     var sSize = 7 + altAbove*0.1;
-    fillPuff(cloudArr, 0, sim.px-cam.px, gY+0.6-cam.py, sim.pz-cam.pz, sSize, sSize, sAlpha);
+    fillPuff(cloudArr, ns++, sim.px-cam.px, gY+0.6-cam.py, sim.pz-cam.pz, sSize, sSize, sAlpha);
+  }
+  for (var si=0;si<clouds.length && ns<MAX_PUFFS;si++){
+    var scl = clouds[si];
+    var sdx = scl.x-cam.px, sdz = scl.z-cam.pz;
+    if (sdx*sdx+sdz*sdz > 3400*3400) continue;
+    if (scl.gy === undefined || (DEBUG.frames & 31)===si%32)
+      scl.gy = Math.max(heightAt(scl.x, scl.z), SEA);
+    fillPuff(cloudArr, ns++, sdx, scl.gy+1.4-cam.py, sdz,
+             scl.scale*1.5, scl.scale*1.5, 0.10*scl.fade*(1-weather.over*0.45));
+  }
+  if (ns){
     gl.uniform3f(progCloud.u.uRight, 1,0,0);
     gl.uniform3f(progCloud.u.uUp, 0,0,1);
     gl.uniform3f(progCloud.u.uLit, 0.05,0.08,0.12);
     gl.uniform3f(progCloud.u.uShade, 0.05,0.08,0.12);
+    uploadPuffs(cloudBuf, cloudArr, ns);
+    gl.drawElements(gl.TRIANGLES, ns*6, gl.UNSIGNED_SHORT, 0);
+  }
+  var navT = missionNavTarget();
+  if (navT){
+    var pulse = 0.22 + 0.13*Math.sin(tSec*2.6);
+    fillPuff(cloudArr, 0, navT.x-cam.px, Math.max(navT.elev!==undefined?navT.elev:heightAt(navT.x,navT.z),SEA)+2-cam.py, navT.z-cam.pz, 70, 70, pulse);
+    gl.uniform3f(progCloud.u.uRight, 1,0,0);
+    gl.uniform3f(progCloud.u.uUp, 0,0,1);
+    gl.uniform3f(progCloud.u.uLit, 1.15, 0.85, 0.45);
+    gl.uniform3f(progCloud.u.uShade, 1.15, 0.85, 0.45);
     uploadPuffs(cloudBuf, cloudArr, 1);
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
   }
@@ -1917,6 +2580,38 @@ function updateHUD(t){
   elThrFill.style.height = (sim.throttle*100).toFixed(1)+'%';
   elThrPct.textContent = Math.round(throttleTarget*100);
   if (state.msgT && t-state.msgT>3.4){ $('toast').style.opacity=0; state.msgT=0; }
+  /* mission objective + nav */
+  var objEl = $('obj');
+  if (mission){
+    var def = mission.def, o = def.objs[mission.oi];
+    objEl.style.display = 'block';
+    var tt = def.name;
+    if (def.time) tt += ' · ⏱ ' + Math.max(0, Math.ceil(def.time - mission.time)) + 's';
+    objEl.children[0].textContent = tt;
+    objEl.children[1].innerHTML = o ? '<b>' + (mission.oi+1) + '/' + def.objs.length + '</b> · ' + objLabel(o, mission.data) : '';
+  } else objEl.style.display = 'none';
+  var navEl = $('nav'), tgt = missionNavTarget();
+  if (!tgt && mission && mission.def.objs[mission.oi] && mission.def.objs[mission.oi].t==='reach')
+    tgt = mission.ctx.peak;
+  if (tgt){
+    var bear = Math.atan2(tgt.x-sim.px, tgt.z-sim.pz)*180/Math.PI;
+    var rel = ((bear - deg) + 540) % 360 - 180;
+    navEl.style.display = 'block';
+    $('navArr').style.transform = 'rotate(' + (rel-90) + 'deg)';
+    $('navTxt').textContent = (tgt.name||'target') + ' · ' + (Math.hypot(tgt.x-sim.px, tgt.z-sim.pz)/1000).toFixed(1) + ' km';
+  } else navEl.style.display = 'none';
+}
+function handleLanding(impact){
+  if (state.mode === 'menu') return;
+  var msg, xp = 2;
+  if (impact < 1.3) msg = 'butter ✨';
+  else if (impact < 3.6) msg = 'smooth landing';
+  else if (impact < 6.5) msg = 'firm landing';
+  else { msg = 'rough arrival'; xp = 1; }
+  career.landings++; saveCareer();
+  toast(msg + ' · +' + xp + ' XP');
+  grantXP(xp);
+  if (audio && prefs.sound && impact < 3.6) audio.sfx.chime();
 }
 
 /* ---------------- cloud simulation + events ---------------- */
@@ -1950,6 +2645,8 @@ function handleImpacts(){
   }
   if (sim.crashed){
     var overWater = sim.crashed===2;
+    var mFailed = !!mission;
+    if (mission) endMission(false, 'crashed');
     if (audio && prefs.sound){ if (overWater) audio.sfx.splash(); else audio.sfx.thud(true); }
     var cf = $('crashflash');
     cf.style.transition='none'; cf.style.opacity=0.9;
@@ -1963,7 +2660,7 @@ function handleImpacts(){
     ns.py = Math.max(heightAt(sim.px, sim.pz),
                      heightAt(sim.px+f[0]*500, sim.pz+f[2]*500), SEA) + 260;
     sim = ns;
-    if (state.mode!=='menu')
+    if (state.mode!=='menu' && !mFailed)
       toast(overWater ? 'scooped up by a friendly wave ༄' : 'a kind updraft sets you back aloft ༄');
   }
 }
@@ -2013,9 +2710,13 @@ function frame(ms){
           cdz = cam.pz-(state.lcz===undefined?cam.pz:state.lcz);
       state.lcx=cam.px; state.lcy=cam.py; state.lcz=cam.pz;
       updateRain(dt, cdx, cdy, cdz);
-      updateChunks(sim.px, sim.pz, booted ? 3 : 200);
+      var chunksBuilt = updateChunks(sim.px, sim.pz, booted ? 3 : 200);
       booted = true;
+      updateFieldMeshes(sim.px, sim.pz);
+      if (chunksBuilt < 2) updateTrees(sim.px, sim.pz);   // stagger mesh builds across frames
       updateClouds(dt);
+      if (sim.landed !== undefined){ handleLanding(sim.landed); sim.landed = undefined; }
+      missionTick(dt);
       updateHUD(t);
 
       if (audio){
@@ -2059,30 +2760,52 @@ window.__sim = {
   simulate: function(seconds, inp){
     inp = inp || {};
     var ac = acById(inp.plane || ACTIVE.id);
-    var st = freshState(inp.x!==undefined?inp.x:5000, inp.z!==undefined?inp.z:5000, 0.3, ac);
+    var st = inp.parked
+      ? parkedState(HOME, ac)
+      : freshState(inp.x!==undefined?inp.x:5000, inp.z!==undefined?inp.z:5000,
+                   inp.heading!==undefined?inp.heading:0.3, ac);
     if (inp.alt!==undefined) st.py = inp.alt;
     if (inp.throttle!==undefined) st.throttle = inp.throttle;
     var io = { roll:inp.roll||0, pitch:inp.pitch||0, yaw:inp.yaw||0,
                assist: inp.assist!==false };
     var minAlt=1e9, maxAlt=-1e9, crashed=false, minUpY=1, rollSum=0, touchedWater=false;
+    var groundTime=0, landedImpact=null, airborne=false;
     var h0 = Math.atan2(qRot(st.q,[0,0,1])[0], qRot(st.q,[0,0,1])[2]);
     for (var i=0;i<seconds*60;i++){
       physStep(st, io, 1/60, ac);
       if (st.crashed){ crashed=true; break; }
       if (inp.script) inp.script(st, io, i/60);
+      if (st.landed !== undefined && landedImpact===null){ landedImpact = st.landed; st.landed = undefined; }
       minAlt=Math.min(minAlt, st.py); maxAlt=Math.max(maxAlt, st.py);
       minUpY=Math.min(minUpY, qRot(st.q,[0,1,0])[1]);
       rollSum += st.wz/60;
       if (st.onWater) touchedWater=true;
+      if (st.onGround) groundTime += 1/60;
+      if (!st.onGround && !st.onWater &&
+          st.py - Math.max(heightAt(st.px,st.pz),SEA) > 20) airborne = true;
     }
     var f=qRot(st.q,[0,0,1]);
     var spd=Math.sqrt(st.vx*st.vx+st.vy*st.vy+st.vz*st.vz);
     return { speed:spd, vy:st.vy, alt:st.py, minAlt:minAlt, maxAlt:maxAlt,
       headingDelta:((Math.atan2(f[0],f[2])-h0)*180/Math.PI+540)%360-180,
       minUpY:minUpY, rollDeg:Math.abs(rollSum)*180/Math.PI, touchedWater:touchedWater,
+      groundTime:groundTime, landedImpact:landedImpact, airborne:airborne,
+      onGround:st.onGround, agl:st.py - Math.max(heightAt(st.px,st.pz),SEA),
       crashed:crashed, nan:!(isFinite(st.px)&&isFinite(st.py)&&isFinite(spd)) };
   },
-  setPlane: function(id){ selectPlane(id, true); },
+  setPlane: function(id){ selectPlane(id, true, true); },
+  home: function(){ return HOME; },
+  fieldsNear: function(x, z){ return fieldsSorted(x===undefined?sim.px:x, z===undefined?sim.pz:z, 2).map(function(f){ return {name:f.af.name, x:f.af.x, z:f.af.z, elev:f.af.elev, d:f.d}; }); },
+  career: function(){ return { xp:career.xp, tier:licenseTier(), license:LICENSES[licenseTier()].name, done:Object.keys(career.done), landings:career.landings }; },
+  grantXP: grantXP,
+  resetCareer: function(){ career.xp=0; career.done={}; career.landings=0; saveCareer(); refreshCareerUI(); },
+  startMission: function(id){ return startMission(id); },
+  missionState: function(){
+    return mission ? { id:mission.def.id, oi:mission.oi, n:mission.def.objs.length,
+      obj:mission.def.objs[mission.oi] ? mission.def.objs[mission.oi].t : null,
+      time:mission.time, data:mission.data } : null;
+  },
+  abandonMission: function(){ endMission(false, 'abandoned'); },
   setWeather: function(over, rain, rainbow){
     weather.force = (over===undefined) ? null : [over, rain||0, rainbow];
     if (weather.force){
