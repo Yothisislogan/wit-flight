@@ -9,6 +9,22 @@ HTML file with zero dependencies. Open `index.html` in any modern browser
 Deployed with GitHub Pages from the `gh-pages` branch — to ship an update,
 push the new `index.html` to that branch.
 
+## Career mode
+
+Work your way up from **Student Pilot** to a **Jet Rating** across five licenses.
+Twelve missions (more planned — they're plain data entries in `MISSIONS`, so adding
+one is a few lines): first solos and touch-and-gos, cross-country navigation to
+procedurally named airfields, glider endurance, water landings, rain flying,
+an aerobatic checkride, summit overflights, and a timed jet dash. Missions grant
+XP; licenses unlock bigger and better aircraft. Free-flight landings earn a
+trickle of XP too, and progress persists in your browser.
+
+The world now has **airfields** — flattened plateaus with asphalt runways,
+centerline and threshold markings, hangars and windsocks, spaced every few
+kilometres with procedural names. Take off from a standstill, follow the amber
+nav arrow and the glowing beacon ring, and grease the landing (touchdowns are
+graded, from *rough arrival* to *butter ✨*).
+
 ## The fleet
 
 | Aircraft | Character |
