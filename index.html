@@ -492,7 +492,7 @@ var FS_PRE = '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\n
 var progMain = makeProg(
   'attribute vec3 aPos; attribute vec3 aNrm; attribute vec4 aCol;\n'+
   'uniform mat4 uVP; uniform mat3 uRot; uniform vec3 uOff;\n'+
-  'uniform vec3 uSunDir, uSunCol, uAmbSky, uAmbGnd, uFogCol;\n'+
+  'uniform vec3 uSunDir, uSunCol, uAmbSky, uAmbGnd, uFogCol, uHalo;\n'+
   'uniform float uFogDen, uCamY, uHazeH;\n'+
   'varying vec4 vCol;\n'+
   'void main(){\n'+
@@ -506,11 +506,13 @@ var progMain = makeProg(
   '  float f = 1.0 - exp(-pow(dist*uFogDen, 2.0));\n'+
   '  float wy = p.y + uCamY;\n'+
   '  f += (1.0-f)*0.42*clamp((uHazeH-wy)/240.0, 0.0, 1.0)*clamp(dist/900.0,0.0,1.0);\n'+
-  '  vCol = vec4(mix(lit, uFogCol, clamp(f,0.0,1.0)), aCol.a);\n'+
+  '  float sunA = pow(max(dot(p/max(dist,0.1), uSunDir), 0.0), 5.0);\n'+
+  '  vec3 fcol = mix(uFogCol, uHalo, sunA);\n'+
+  '  vCol = vec4(mix(lit, fcol, clamp(f,0.0,1.0)), aCol.a);\n'+
   '}',
   FS_PRE+'varying vec4 vCol; void main(){ gl_FragColor = vCol; }',
   ['aPos','aNrm','aCol'],
-  ['uVP','uRot','uOff','uSunDir','uSunCol','uAmbSky','uAmbGnd','uFogCol','uFogDen','uCamY','uHazeH']
+  ['uVP','uRot','uOff','uSunDir','uSunCol','uAmbSky','uAmbGnd','uFogCol','uFogDen','uCamY','uHazeH','uHalo']
 );
 
 /* sky */
@@ -518,13 +520,23 @@ var progSky = makeProg(
   'attribute vec2 aPos; attribute vec3 aRay; varying vec3 vRay;\n'+
   'void main(){ vRay=aRay; gl_Position=vec4(aPos,0.9999,1.0); }',
   FS_PRE+
-  'varying vec3 vRay; uniform vec3 uZen,uHor,uSunDir,uSunCol; uniform float uRainbow;\n'+
+  'varying vec3 vRay; uniform vec3 uZen,uHor,uSunDir,uSunCol,uMoonDir; uniform float uRainbow,uPillar,uMoonI;\n'+
   'void main(){\n'+
   '  vec3 r = normalize(vRay);\n'+
   '  float t = pow(clamp(r.y*1.45+0.16, 0.0, 1.0), 0.78);\n'+
   '  vec3 col = mix(uHor, uZen, t);\n'+
   '  float s = max(dot(r,uSunDir), 0.0);\n'+
   '  col += uSunCol*(pow(s,1500.0)*9.0 + pow(s,48.0)*0.28 + pow(s,6.0)*0.11);\n'+
+  '  if (uPillar > 0.002){\n'+
+  '    vec2 rh = r.xz / max(length(r.xz), 0.02);\n'+
+  '    vec2 sh = uSunDir.xz / max(length(uSunDir.xz), 0.02);\n'+
+  '    float azd = 1.0 - dot(rh, sh);\n'+
+  '    col += uSunCol * exp(-azd*150.0) * exp(-abs(r.y-uSunDir.y)*5.5) * uPillar * 0.4;\n'+
+  '  }\n'+
+  '  if (uMoonI > 0.002){\n'+
+  '    float md = max(dot(r, uMoonDir), 0.0);\n'+
+  '    col += vec3(0.88,0.94,1.06) * (pow(md,9000.0)*2.4 + pow(md,300.0)*0.10) * uMoonI;\n'+
+  '  }\n'+
   '  if (uRainbow > 0.003){\n'+
   '    float ang = acos(clamp(dot(r, -uSunDir), -1.0, 1.0));\n'+
   '    float h = clamp((ang-0.681)/0.075, 0.0, 1.0);\n'+   /* 0 inner violet .. 1 outer red */
@@ -536,7 +548,7 @@ var progSky = makeProg(
   '  col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898,78.233)))*43758.5453)-0.5)*0.012;\n'+
   '  gl_FragColor = vec4(col, 1.0);\n'+
   '}',
-  ['aPos','aRay'], ['uZen','uHor','uSunDir','uSunCol','uRainbow']
+  ['aPos','aRay'], ['uZen','uHor','uSunDir','uSunCol','uRainbow','uPillar','uMoonDir','uMoonI']
 );
 
 /* water */
@@ -550,7 +562,7 @@ var progWater = makeProg(
   '}',
   FS_PRE+
   'varying vec3 vPos; varying vec2 vW;\n'+
-  'uniform vec3 uDeep,uHor,uSunDir,uSunCol,uFogCol; uniform float uT,uFogDen;\n'+
+  'uniform vec3 uDeep,uHor,uSunDir,uSunCol,uFogCol,uHalo; uniform float uT,uFogDen;\n'+
   'void main(){\n'+
   '  vec2 w = vW;\n'+
   '  vec3 n = normalize(vec3(\n'+
@@ -562,34 +574,39 @@ var progWater = makeProg(
   '  vec3 col = mix(uDeep, uHor, 0.22+0.62*fr);\n'+
   '  float sp = pow(max(dot(reflect(-V,n), uSunDir), 0.0), 160.0);\n'+
   '  col += uSunCol*sp*0.85;\n'+
+  '  vec3 n2 = normalize(n + vec3(sin(w.x*0.93+uT*3.1)*0.022, 0.0, cos(w.y*0.87+uT*2.7)*0.022));\n'+
+  '  col += uSunCol * pow(max(dot(reflect(-V,n2), uSunDir), 0.0), 900.0) * 1.5;\n'+
   '  float f = 1.0 - exp(-pow(length(vPos)*uFogDen, 2.0));\n'+
-  '  gl_FragColor = vec4(mix(col,uFogCol,clamp(f,0.0,1.0)), 0.93);\n'+
+  '  float sunA = pow(max(dot(normalize(vPos), uSunDir), 0.0), 5.0);\n'+
+  '  gl_FragColor = vec4(mix(col, mix(uFogCol,uHalo,sunA), clamp(f,0.0,1.0)), 0.93);\n'+
   '}',
-  ['aPos'], ['uVP','uCam','uDeep','uHor','uSunDir','uSunCol','uFogCol','uT','uFogDen']
+  ['aPos'], ['uVP','uCam','uDeep','uHor','uSunDir','uSunCol','uFogCol','uT','uFogDen','uHalo']
 );
 
 /* clouds & soft sprites */
 var progCloud = makeProg(
   'attribute vec3 aCtr; attribute vec2 aCrn; attribute vec2 aUV; attribute float aFade;\n'+
-  'uniform mat4 uVP; uniform vec3 uRight,uUp; uniform float uFogDen;\n'+
-  'varying vec2 vUV; varying float vFade,vFog;\n'+
+  'uniform mat4 uVP; uniform vec3 uRight,uUp,uSunDir; uniform float uFogDen;\n'+
+  'varying vec2 vUV; varying float vFade,vFog,vSunA;\n'+
   'void main(){\n'+
   '  vec3 p = aCtr + uRight*aCrn.x + uUp*aCrn.y;\n'+
   '  gl_Position = uVP*vec4(p,1.0);\n'+
   '  vUV=aUV; vFade=aFade;\n'+
-  '  vFog = clamp(1.0-exp(-pow(length(p)*uFogDen*0.92, 2.0)), 0.0, 1.0);\n'+
+  '  float d = length(p);\n'+
+  '  vFog = clamp(1.0-exp(-pow(d*uFogDen*0.92, 2.0)), 0.0, 1.0);\n'+
+  '  vSunA = pow(max(dot(p/max(d,0.1), uSunDir), 0.0), 5.0);\n'+
   '}',
   FS_PRE+
-  'varying vec2 vUV; varying float vFade,vFog;\n'+
-  'uniform sampler2D uTex; uniform vec3 uLit,uShade,uFogCol;\n'+
+  'varying vec2 vUV; varying float vFade,vFog,vSunA;\n'+
+  'uniform sampler2D uTex; uniform vec3 uLit,uShade,uFogCol,uHalo;\n'+
   'void main(){\n'+
   '  vec4 t = texture2D(uTex, vUV);\n'+
   '  vec3 col = mix(uShade, uLit, t.r);\n'+
-  '  col = mix(col, uFogCol, vFog);\n'+
+  '  col = mix(col, mix(uFogCol,uHalo,vSunA), vFog);\n'+
   '  gl_FragColor = vec4(col, t.a*vFade*(1.0-vFog*0.85));\n'+
   '}',
   ['aCtr','aCrn','aUV','aFade'],
-  ['uVP','uRight','uUp','uFogDen','uTex','uLit','uShade','uFogCol']
+  ['uVP','uRight','uUp','uSunDir','uFogDen','uTex','uLit','uShade','uFogCol','uHalo']
 );
 
 /* ---------------- geometry helpers ---------------- */
@@ -655,43 +672,53 @@ MeshBuilder.prototype.upload = function(usage){
 /* ---------------- terrain chunks ---------------- */
 var CH_SIZE=640, CH_Q=20, CELL=CH_SIZE/CH_Q;
 var CH_VERTS = CH_Q*CH_Q*6;
+var CH_G = CH_Q+3;          // height grid with a 1-sample border for seam-free shading
 var chunkBuilder = new MeshBuilder(CH_VERTS);
-var hGrid = new Float64Array((CH_Q+1)*(CH_Q+1));
+var hGrid = new Float64Array(CH_G*CH_G);
 var chunks = new Map();     // "cx,cz" -> {vbo,count,x0,z0}
 var vboPool = [];
 var viewChunks = 4.3;       // radius, in chunks (adaptive quality may lower it)
 
+function hg(i, j){ return hGrid[(j+1)*CH_G + (i+1)]; }
+function aoAt(i, j){
+  /* concave ground shades down, convex ridges catch the light */
+  var h = hg(i,j);
+  var avg = (hg(i-1,j)+hg(i+1,j)+hg(i,j-1)+hg(i,j+1))*0.25;
+  return clamp(1 + (h-avg)*0.011, 0.80, 1.10);
+}
 function buildChunk(cx, cz){
   var x0=cx*CH_SIZE, z0=cz*CH_SIZE;
   var i,j;
-  for (j=0;j<=CH_Q;j++) for (i=0;i<=CH_Q;i++)
-    hGrid[j*(CH_Q+1)+i] = heightAt(x0+i*CELL, z0+j*CELL);
+  for (j=-1;j<=CH_Q+1;j++) for (i=-1;i<=CH_Q+1;i++)
+    hGrid[(j+1)*CH_G+(i+1)] = heightAt(x0+i*CELL, z0+j*CELL);
   var mb = chunkBuilder; mb.n = 0;
   for (j=0;j<CH_Q;j++) for (i=0;i<CH_Q;i++){
     var lx0=i*CELL, lz0=j*CELL, lx1=lx0+CELL, lz1=lz0+CELL;
-    var h00=hGrid[j*(CH_Q+1)+i],     h10=hGrid[j*(CH_Q+1)+i+1],
-        h01=hGrid[(j+1)*(CH_Q+1)+i], h11=hGrid[(j+1)*(CH_Q+1)+i+1];
+    var h00=hg(i,j), h10=hg(i+1,j), h01=hg(i,j+1), h11=hg(i+1,j+1);
+    var sA=aoAt(i,j), sB=aoAt(i+1,j), sC=aoAt(i,j+1), sD=aoAt(i+1,j+1);
     var A=[lx0,h00,lz0], B=[lx1,h10,lz0], C=[lx0,h01,lz1], D=[lx1,h11,lz1];
-    var t1, t2;
-    if (((i+j)&1)===0){ t1=[A,C,B]; t2=[B,C,D]; } else { t1=[A,C,D]; t2=[A,D,B]; }
-    pushTerrainTri(mb, t1, x0, z0, i*2+j*131);
-    pushTerrainTri(mb, t2, x0, z0, i*2+1+j*131);
+    var t1, t2, s1, s2;
+    if (((i+j)&1)===0){ t1=[A,C,B]; s1=(sA+sC+sB)/3; t2=[B,C,D]; s2=(sB+sC+sD)/3; }
+    else { t1=[A,C,D]; s1=(sA+sC+sD)/3; t2=[A,D,B]; s2=(sA+sD+sB)/3; }
+    pushTerrainTri(mb, t1, x0, z0, i*2+j*131, s1);
+    pushTerrainTri(mb, t2, x0, z0, i*2+1+j*131, s2);
   }
   var vbo = vboPool.pop() || gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
   gl.bufferData(gl.ARRAY_BUFFER, mb.u8.subarray(0, mb.n*STRIDE), gl.STATIC_DRAW);
   return {vbo:vbo, count:mb.n, x0:x0, z0:z0};
 }
-function pushTerrainTri(mb, t, x0, z0, faceId){
+function pushTerrainTri(mb, t, x0, z0, faceId, shade){
   var p0=t[0], p1=t[1], p2=t[2];
   var u=vsub(p1,p0), v=vsub(p2,p0), n=vnorm(vcross(u,v));
   var mh=(p0[1]+p1[1]+p2[1])/3;
   var mx=x0+(p0[0]+p1[0]+p2[0])/3, mz=z0+(p0[2]+p1[2]+p2[2])/3;
   var rnd = hash2(Math.floor(mx*7.3), Math.floor(mz*7.3)+faceId);
   var c = terrainColor(mh, n[1], mx, mz, rnd);
-  mb.vert(p0[0],p0[1],p0[2], n[0],n[1],n[2], c[0],c[1],c[2]);
-  mb.vert(p1[0],p1[1],p1[2], n[0],n[1],n[2], c[0],c[1],c[2]);
-  mb.vert(p2[0],p2[1],p2[2], n[0],n[1],n[2], c[0],c[1],c[2]);
+  var s = shade===undefined ? 1 : shade;
+  mb.vert(p0[0],p0[1],p0[2], n[0],n[1],n[2], c[0]*s,c[1]*s,c[2]*s);
+  mb.vert(p1[0],p1[1],p1[2], n[0],n[1],n[2], c[0]*s,c[1]*s,c[2]*s);
+  mb.vert(p2[0],p2[1],p2[2], n[0],n[1],n[2], c[0]*s,c[1]*s,c[2]*s);
 }
 var pendingChunks = [];
 function updateChunks(px, pz, budget){
@@ -915,6 +942,27 @@ function makeStreakTexture(){
 }
 var streakTex = makeStreakTexture();
 
+function makeBirdTexture(){
+  var cv = document.createElement('canvas'); cv.width=24; cv.height=16;
+  var c = cv.getContext('2d');
+  c.clearRect(0,0,24,16);
+  c.strokeStyle = 'rgba(255,255,255,0.95)';
+  c.lineWidth = 2.6; c.lineCap = 'round';
+  c.beginPath();
+  c.moveTo(2, 12); c.quadraticCurveTo(7, 3, 12, 9);
+  c.quadraticCurveTo(17, 3, 22, 12);
+  c.stroke();
+  var tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+var birdTex = makeBirdTexture();
+
 /* rain particles, stored relative to the camera */
 var RAIN_N = 240;
 var rainPts = new Float32Array(RAIN_N*3);
@@ -940,7 +988,7 @@ function updateRain(dt, camDX, camDY, camDZ){
   }
 }
 
-var N_CLOUDS = 46, MAX_PUFFS = N_CLOUDS*5+4;
+var N_CLOUDS = 46, MAX_PUFFS = N_CLOUDS*8+8;
 var clouds = [];
 function spawnCloud(cl, px, pz, ahead, headx, headz){
   var ang, dist;
@@ -952,26 +1000,71 @@ function spawnCloud(cl, px, pz, ahead, headx, headz){
   var ov = weather ? weather.over : 0;
   cl.y = 430 - ov*170 + Math.random()*520;
   if (h > cl.y-60) cl.y = h + 140 + Math.random()*160;
-  cl.scale = 90+Math.random()*130;
+  cl.scale = 80+Math.random()*170;
   cl.fade = 0;
-  cl.nPuffs = 3+(Math.random()*3|0);
+  cl.nPuffs = 4+(Math.random()*3|0);
   cl.puffs = [];
   for (var i=0;i<cl.nPuffs;i++){
     cl.puffs.push({
-      dx:(Math.random()-0.5)*1.6*cl.scale,
+      dx:(Math.random()-0.5)*1.7*cl.scale,
       dy:(Math.random()-0.5)*0.34*cl.scale,
-      dz:(Math.random()-0.5)*1.6*cl.scale,
-      s: cl.scale*(0.6+Math.random()*0.55)
+      dz:(Math.random()-0.5)*1.7*cl.scale,
+      s: cl.scale*(0.55+Math.random()*0.6)
     });
+  }
+  if (Math.random() < 0.22){
+    /* towering cumulus */
+    for (var k=0;k<2;k++)
+      cl.puffs.push({ dx:(Math.random()-0.5)*0.7*cl.scale,
+                      dy:cl.scale*(0.45+k*0.42+Math.random()*0.2),
+                      dz:(Math.random()-0.5)*0.7*cl.scale,
+                      s: cl.scale*(0.75-k*0.18) });
   }
 }
 for (var ci=0;ci<N_CLOUDS;ci++){ var cl={}; spawnCloud(cl, 0, 0, false, 0, 1); clouds.push(cl); }
+
+/* high cirrus sheets */
+var cirrus = [];
+function spawnCirrus(c, px, pz){
+  var a = Math.random()*Math.PI*2, d = 800+Math.random()*5200;
+  c.x = px + Math.sin(a)*d; c.z = pz + Math.cos(a)*d;
+  c.y = 1600 + Math.random()*750;
+  c.sx = 480 + Math.random()*720;
+  c.sz = c.sx*(0.18 + Math.random()*0.16);
+  c.a = 0.05 + Math.random()*0.07;
+}
+for (var cri=0;cri<8;cri++){ var cc={}; spawnCirrus(cc, 0, 0); cirrus.push(cc); }
+
+/* a passing flock of birds */
+var flock = { on:false, next:24, x:0, y:0, z:0, hx:0, hz:1, t:0 };
+function updateBirds(dt){
+  if (!flock.on){
+    if (state.mode==='flying' && sim.py - Math.max(heightAt(sim.px,sim.pz),SEA) < 500){
+      flock.next -= dt;
+      if (flock.next <= 0){
+        var a = Math.atan2(sim.vx, sim.vz) + (Math.random()-0.5)*1.6;
+        flock.x = sim.px + Math.sin(a)*(800+Math.random()*500);
+        flock.z = sim.pz + Math.cos(a)*(800+Math.random()*500);
+        flock.y = Math.max(heightAt(flock.x, flock.z), SEA) + 60 + Math.random()*160;
+        var ha = Math.random()*Math.PI*2;
+        flock.hx = Math.sin(ha); flock.hz = Math.cos(ha);
+        flock.on = true;
+      }
+    }
+  } else {
+    flock.t += dt;
+    flock.x += flock.hx*8.5*dt; flock.z += flock.hz*8.5*dt;
+    if (Math.hypot(flock.x-sim.px, flock.z-sim.pz) > 3200){
+      flock.on = false; flock.next = 28 + Math.random()*40;
+    }
+  }
+}
 
 var cloudArr = new Float32Array(MAX_PUFFS*4*8);
 var cloudBuf = gl.createBuffer();
 var cloudIdx = gl.createBuffer();
 (function(){
-  var IDXQ = 256;   // covers cloud puffs, shadows, and the 240 rain streaks
+  var IDXQ = 420;   // covers cloud puffs (incl. towers), shadows, cirrus, birds, and 240 rain streaks
   var idx = new Uint16Array(IDXQ*6);
   for (var i=0;i<IDXQ;i++){
     var b=i*4, o=i*6;
@@ -1375,9 +1468,9 @@ var PAL_KEYS = [
   { el:18, zen:[0.38,0.53,0.85], hor:[0.99,0.77,0.57], sun:[1.00,0.87,0.60],
     lig:[1.12,0.90,0.66], ambS:[0.50,0.47,0.57], ambG:[0.38,0.32,0.28],
     cLit:[1.08,0.89,0.72], cSh:[0.64,0.58,0.72], deep:[0.12,0.30,0.40] },
-  { el:9,  zen:[0.26,0.31,0.60], hor:[0.88,0.60,0.64], sun:[1.00,0.70,0.50],
+  { el:9,  zen:[0.21,0.25,0.56], hor:[0.95,0.57,0.58], sun:[1.00,0.66,0.44],
     lig:[0.90,0.66,0.58], ambS:[0.42,0.41,0.58], ambG:[0.29,0.27,0.32],
-    cLit:[0.99,0.76,0.71], cSh:[0.50,0.48,0.70], deep:[0.09,0.22,0.36] }
+    cLit:[1.02,0.74,0.68], cSh:[0.50,0.48,0.70], deep:[0.09,0.22,0.36] }
 ];
 var pal = { sunDir:[0,1,0] };
 function greyer(c, k, dim){
@@ -1386,6 +1479,7 @@ function greyer(c, k, dim){
 }
 function updatePalette(timeSec){
   var ph = 1 + Math.sin(timeSec*2*Math.PI/420 - 0.6);   // 0..2 over 7 min
+  ph = clamp(ph + Math.sin(ph*Math.PI)*0.32, 0, 2);     // linger in the golden hour
   var i0 = Math.min(Math.floor(ph), 1), t = smoothstep(0,1, ph-i0);
   var A = PAL_KEYS[i0], B = PAL_KEYS[i0+1];
   ['zen','hor','sun','lig','ambS','ambG','cLit','cSh','deep'].forEach(function(k){
@@ -1394,6 +1488,11 @@ function updatePalette(timeSec){
   var el = lerp(A.el, B.el, t)*Math.PI/180;
   var az = (318 + timeSec*0.05)*Math.PI/180;
   pal.sunDir = [Math.cos(el)*Math.sin(az), Math.sin(el), Math.cos(el)*Math.cos(az)];
+  var elDeg = el*180/Math.PI;
+  pal.pillar = smoothstep(26, 11, elDeg)*(1-weather.over*0.9);
+  pal.moonI  = smoothstep(30, 13, elDeg)*(1-weather.over*0.85)*0.85;
+  var mAz = az + Math.PI*0.92, mEl = clamp(0.85 - el, 0.22, 0.85);
+  pal.moonDir = [Math.cos(mEl)*Math.sin(mAz), Math.sin(mEl), Math.cos(mEl)*Math.cos(mAz)];
   /* weather greys the world down */
   var o = weather.over, rn = weather.rain;
   if (o > 0.005){
@@ -1407,6 +1506,10 @@ function updatePalette(timeSec){
     pal.cSh  = greyer(pal.cSh,  o*0.40, 1 - o*0.40 - rn*0.12);
     pal.deep = greyer(pal.deep, o*0.40, 1 - o*0.18);
   }
+  /* aerial-perspective halo: the fog itself glows warm toward the sun */
+  pal.halo = [ Math.min(1.3, pal.hor[0]*0.45 + pal.sun[0]*0.75),
+               Math.min(1.3, pal.hor[1]*0.45 + pal.sun[1]*0.75),
+               Math.min(1.3, pal.hor[2]*0.45 + pal.sun[2]*0.75) ];
 }
 
 /* ---------------- weather ---------------- */
@@ -2353,6 +2456,9 @@ function drawScene(tSec){
   gl.uniform3fv(progSky.u.uSunDir, pal.sunDir);
   gl.uniform3fv(progSky.u.uSunCol, pal.sun);
   gl.uniform1f(progSky.u.uRainbow, weather.rainbow);
+  gl.uniform1f(progSky.u.uPillar, pal.pillar||0);
+  gl.uniform3fv(progSky.u.uMoonDir, pal.moonDir||[0,1,0]);
+  gl.uniform1f(progSky.u.uMoonI, pal.moonI||0);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, skyIdx);
   gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 
@@ -2371,6 +2477,7 @@ function drawScene(tSec){
   gl.uniform1f(progMain.u.uFogDen, fogDen);
   gl.uniform1f(progMain.u.uCamY, cam.py);
   gl.uniform1f(progMain.u.uHazeH, 60);
+  gl.uniform3fv(progMain.u.uHalo, pal.halo);
   setAttribs([progMain.a.aPos, progMain.a.aNrm, progMain.a.aCol]);
   var chRad = CH_SIZE*0.75+380;
   chunks.forEach(function(ch){
@@ -2440,6 +2547,7 @@ function drawScene(tSec){
   gl.uniform3fv(progWater.u.uFogCol, fogCol);
   gl.uniform1f(progWater.u.uFogDen, fogDen);
   gl.uniform1f(progWater.u.uT, tSec);
+  gl.uniform3fv(progWater.u.uHalo, pal.halo);
   setAttribs([progWater.a.aPos]);
   gl.bindBuffer(gl.ARRAY_BUFFER, waterBuf);
   gl.vertexAttribPointer(progWater.a.aPos, 2, gl.FLOAT, false, 0, 0);
@@ -2452,6 +2560,8 @@ function drawScene(tSec){
   gl.uniformMatrix4fv(progCloud.u.uVP, false, vpM);
   gl.uniform1f(progCloud.u.uFogDen, fogDen);
   gl.uniform3fv(progCloud.u.uFogCol, fogCol);
+  gl.uniform3fv(progCloud.u.uHalo, pal.halo);
+  gl.uniform3fv(progCloud.u.uSunDir, pal.sunDir);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, cloudTex);
   gl.uniform1i(progCloud.u.uTex, 0);
@@ -2520,6 +2630,46 @@ function drawScene(tSec){
   gl.uniform3fv(progCloud.u.uShade, pal.cSh);
   uploadPuffs(cloudBuf, cloudArr, np);
   gl.drawElements(gl.TRIANGLES, np*6, gl.UNSIGNED_SHORT, 0);
+
+  /* --- high cirrus sheets (flat, ground-aligned) --- */
+  var ncr = 0;
+  for (var cri=0;cri<cirrus.length;cri++){
+    var cr = cirrus[cri];
+    fillPuff(cloudArr, ncr, cr.x-cam.px, cr.y-cam.py, cr.z-cam.pz, cr.sx, cr.sz,
+             cr.a*(1-weather.over*0.55));
+    ncr++;
+  }
+  if (ncr){
+    gl.uniform3f(progCloud.u.uRight, 1,0,0);
+    gl.uniform3f(progCloud.u.uUp, 0,0,1);
+    gl.uniform3fv(progCloud.u.uLit, pal.cLit);
+    gl.uniform3fv(progCloud.u.uShade, pal.cLit);
+    uploadPuffs(cloudBuf, cloudArr, ncr);
+    gl.drawElements(gl.TRIANGLES, ncr*6, gl.UNSIGNED_SHORT, 0);
+  }
+
+  /* --- birds --- */
+  if (flock.on){
+    var px2 = flock.hz, pz2 = -flock.hx;   // perpendicular to flight dir
+    var nb = 0;
+    for (var bi=0;bi<9;bi++){
+      var row = (bi+1)>>1, bside = (bi&1)?1:-1;
+      if (bi===0){ row = 0; bside = 0; }
+      var bx = flock.x + px2*bside*row*5.2 - flock.hx*row*6.5;
+      var bz = flock.z + pz2*bside*row*5.2 - flock.hz*row*6.5;
+      var by = flock.y + Math.sin(flock.t*1.1+bi)*1.6;
+      var flap = 0.45 + Math.abs(Math.sin(flock.t*6.5 + bi*1.7))*0.75;
+      fillPuff(cloudArr, nb++, bx-cam.px, by-cam.py, bz-cam.pz, 1.5, 1.1*flap, 0.85);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, birdTex);
+    gl.uniform3fv(progCloud.u.uRight, side);
+    gl.uniform3fv(progCloud.u.uUp, up2);
+    gl.uniform3f(progCloud.u.uLit, 0.15, 0.16, 0.20);
+    gl.uniform3f(progCloud.u.uShade, 0.15, 0.16, 0.20);
+    uploadPuffs(cloudBuf, cloudArr, nb);
+    gl.drawElements(gl.TRIANGLES, nb*6, gl.UNSIGNED_SHORT, 0);
+    gl.bindTexture(gl.TEXTURE_2D, cloudTex);
+  }
 
   /* --- rain streaks --- */
   if (weather.rain > 0.02 && rainSeeded){
@@ -2628,6 +2778,12 @@ function updateClouds(dt){
     if (d2 > 4300*4300) spawnCloud(cl, sim.px, sim.pz, true, hx, hz);
     else if (d2 < cl.scale*cl.scale*1.1 && dy*dy < cl.scale*cl.scale*0.16) inside = true;
   }
+  for (var ci2=0;ci2<cirrus.length;ci2++){
+    var cr = cirrus[ci2];
+    cr.x += P.windX*dt*2.4; cr.z += P.windZ*dt*2.4;
+    if (Math.hypot(cr.x-sim.px, cr.z-sim.pz) > 6800) spawnCirrus(cr, sim.px, sim.pz);
+  }
+  updateBirds(dt);
   var t = performanceNow01();
   state.inCloudT += ((inside?1:0) - state.inCloudT)*expDamp(3,dt);
   $('cloudflash').style.opacity = (state.inCloudT*0.13).toFixed(3);
@@ -2835,6 +2991,12 @@ window.__sim = {
   start: function(){ closeOverlay(); },
   setThrottle: function(v){ throttleTarget = clamp(v,0,1); },
   lockQuality: function(){ dprCap = 2; viewChunks = 4.3; state.quality = 99; resize(); },
+  spawnFlock: function(){
+    var f = qRot(sim.q,[0,0,1]);
+    flock.x = sim.px + f[0]*220; flock.z = sim.pz + f[2]*220;
+    flock.y = sim.py - 14;
+    flock.hx = f[0]*0.9; flock.hz = f[2]*0.9; flock.t = 0; flock.on = true;
+  },
   heightAt: heightAt,
   setTime: function(s){ palForce = s; },
   teleport: function(x, z, alt, heading){
